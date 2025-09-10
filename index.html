@@ -1,11 +1,67 @@
 <!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Mini App Demo</title>
-  </head>
-  <body>
-    <h1>Hello Telegram Mini App 👋</h1>
-    <p>Ini halaman awal dari GitHub Pages.</p>
-  </body>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Telegram Mini App — Clean</title>
+  <style>
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,Arial,sans-serif;background:#f6f7fb}
+    .wrap{max-width:520px;margin:28px auto;padding:16px}
+    .card{background:#fff;border-radius:14px;padding:20px;box-shadow:0 6px 24px rgba(0,0,0,.06)}
+    h1{margin:0 0 8px;font-size:1.2rem} p{margin:0 0 14px;color:#4b5563}
+    .grid{display:grid;gap:12px} label{font-size:.9rem;color:#374151}
+    input,button{width:100%;padding:12px 14px;border:1px solid #e5e7eb;border-radius:12px;font-size:1rem}
+    input:focus{outline:none;border-color:#60a5fa;box-shadow:0 0 0 3px rgba(96,165,250,.25)}
+    .row{display:grid;gap:10px;grid-template-columns:1fr 120px}
+    @media (max-width:480px){.row{grid-template-columns:1fr}}
+    .status{margin-top:10px;font-size:.9rem;color:#6b7280;background:#f9fafb;padding:10px;border-radius:10px}
+  </style>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Mini App (Preview)</h1>
+      <p>Versi bersih untuk diuji di GitHub Pages. Belum terhubung bot.</p>
+
+      <div class="grid">
+        <label for="name">Nama Item</label>
+        <input id="name" placeholder="SANTAN 65ML" />
+        <div class="row">
+          <input id="qty" type="number" inputmode="numeric" min="0" placeholder="Qty" />
+          <button id="send">Kirim</button>
+        </div>
+      </div>
+
+      <div class="status" id="status">Status: memuat…</div>
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+
+    function setStatus(msg){ $("status").textContent = "Status: " + msg; }
+
+    // Info lingkungan
+    setStatus(tg ? "Berjalan di Telegram WebApp." : "Mode preview (browser biasa).");
+
+    // Tombol kirim: di Telegram → kirim via tg.sendData; di browser → console.log
+    $("send").addEventListener("click", () => {
+      const payload = {
+        name: $("name").value.trim(),
+        qty: Number($("qty").value || 0),
+        ts: Date.now()
+      };
+      if (tg) {
+        try { tg.ready(); tg.expand && tg.expand(); } catch(e){}
+        tg.sendData(JSON.stringify(payload)); // Nanti akan ditangani bot (langkah terpisah)
+        setStatus("Data dikirim ke Telegram WebApp.");
+      } else {
+        console.log("Preview payload:", payload);
+        setStatus("Preview: data dicetak ke console (buka DevTools).");
+      }
+    });
+  </script>
+</body>
 </html>
