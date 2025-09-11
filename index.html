@@ -1,140 +1,33 @@
 <!doctype html>
 <html lang="id">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Form Inspeksi</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mini App Inspeksi</title>
   <style>
-    :root { --gap:12px; --r:12px; }
-    *{ box-sizing:border-box; }
-    body{ margin:0; font-family:system-ui,Arial; background:#f6f7fb; padding:min(4vw,24px); }
-    .card{ max-width:760px; margin:0 auto; background:#fff; border-radius:var(--r);
-      padding:clamp(12px,2.5vw,24px); box-shadow:0 8px 22px rgba(0,0,0,.06); }
-    h1{ margin:0 0 8px; font-size:clamp(18px,4.5vw,24px); }
-    p{ margin:0 0 16px; color:#556; }
-    form{ display:grid; gap:var(--gap); }
-    .grid{ display:grid; gap:var(--gap); grid-template-columns:1fr; }
-    @media(min-width:760px){ .grid{ grid-template-columns:repeat(2,1fr); } }
-    label{ font-size:13px; color:#223; margin-bottom:6px; display:block; }
-    .required::after{ content:" *"; color:#b42318; }
-    input{ width:100%; border:1px solid #e5e8f2; border-radius:10px; padding:10px 12px;
-      background:#fafbff; font-size:14px; outline:none; }
-    input:focus{ border-color:#b9c2f0; background:#fff; }
-    .row{ display:grid; gap:6px; }
-    .actions{ display:flex; gap:var(--gap); flex-wrap:wrap; margin-top:6px; }
-    button{ border:0; border-radius:10px; padding:12px 16px; font-weight:600; cursor:pointer; font-size:14px; }
-    .btn-primary{ background:#3e6ae1; color:#fff; }
-    .btn-ghost{ background:#eef2ff; color:#334; }
-    .status{ margin-top:10px; min-height:18px; font-size:14px; }
-    .ok{ color:#0a7a43; } .err{ color:#b42318; }
+    body { margin:0; font-family:system-ui, Arial, sans-serif; padding:16px; background:#f6f7fb; }
+    .card { max-width:720px; margin:0 auto; background:#fff; border-radius:12px; padding:16px; box-shadow:0 6px 18px rgba(0,0,0,.06); }
+    h1 { margin:0 0 10px; font-size:20px; }
+    pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:10px; overflow:auto; }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>Inspeksi Kontainer</h1>
-    <p>Isi HURUF BESAR. Sistem memvalidasi <b>Container No</b> (4 huruf + 7 angka).</p>
-
-    <form id="f">
-      <div class="grid">
-        <div class="row"><label class="required">Container</label><input id="Container" required /></div>
-        <div class="row"><label class="required">Date</label><input id="Date" placeholder="2025-09-11" required /></div>
-        <div class="row"><label>Shipment Code</label><input id="Shipment Code" /></div>
-        <div class="row"><label>DPF No</label><input id="DPF No" /></div>
-        <div class="row"><label>Consignee</label><input id="Consignee" /></div>
-        <div class="row"><label>Pickup</label><input id="Pickup" /></div>
-        <div class="row"><label>Transporter</label><input id="Transporter" /></div>
-        <div class="row"><label class="required">Container No</label><input id="Container No" placeholder="ABCD1234567" required /></div>
-        <div class="row"><label>Seal No</label><input id="Seal No" /></div>
-        <div class="row"><label>Plate No</label><input id="Plate No" /></div>
-        <div class="row"><label class="required">Driver</label><input id="Driver" required /></div>
-        <div class="row"><label>Loader</label><input id="Loader" /></div>
-      </div>
-
-      <div class="actions">
-        <button type="button" class="btn-ghost" id="btnReset">Reset</button>
-        <button type="submit" class="btn-primary" id="btnSubmit">Kirim</button>
-      </div>
-      <div class="status" id="status"></div>
-    </form>
+    <h1>Form Inspeksi (Preview)</h1>
+    <pre>
+Container :
+Date :
+Shipment Code :
+DPF No :
+Consignee :
+Pickup :
+Transporter :
+Container No :
+Seal No :
+Plate No :
+Driver :
+Loader :
+    </pre>
   </div>
-
-  <script>
-    // ===== KONFIG =====
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbyjgnRxqrM9hSaSv-b3EQOYeL64rvkwfqpP6KlYW9k7Ka0wvpgdJ9sXNHqnk6lvUoftdQ/exec
-';
-    const API_KEY = 'OKGAS123';
-
-    const FIELDS = ['Container','Date','Shipment Code','DPF No','Consignee','Pickup','Transporter','Container No','Seal No','Plate No','Driver','Loader'];
-    const $ = id => document.getElementById(id);
-    const statusEl = $('status');
-    const setStatus = (m, ok=false) => { statusEl.textContent = m; statusEl.className = 'status ' + (ok?'ok':'err'); };
-
-    // Auto uppercase
-    FIELDS.forEach(id => {
-      const el = $(id);
-      el && el.addEventListener('input', () => {
-        const s = el.selectionStart, e = el.selectionEnd;
-        el.value = (el.value || '').toUpperCase();
-        el.setSelectionRange(s,e);
-      });
-    });
-
-    // Reset
-    $('btnReset').addEventListener('click', () => {
-      FIELDS.forEach(id => { const el = $(id); if (el) el.value = ''; });
-      setStatus('');
-    });
-
-    // Telegram WebApp integration
-    const tg = window.Telegram ? window.Telegram.WebApp : null;
-    if (tg) {
-      tg.expand();
-      tg.MainButton.setText('KIRIM DATA');
-      tg.MainButton.onClick(() => $('btnSubmit').click());
-    }
-
-    const validContainerNo = s => /^[A-Z]{4}\d{7}$/.test(String(s||'').trim());
-    const collect = () => Object.fromEntries(FIELDS.map(id => [id, ($(id)?.value||'').toUpperCase().trim()]));
-
-    $('f').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      setStatus('');
-      const data = collect();
-
-      if (!data['Container'] || !data['Date'] || !data['Driver'] || !data['Container No'])
-        return setStatus('Harap isi field wajib (Container, Date, Driver, Container No).');
-
-      if (!validContainerNo(data['Container No']))
-        return setStatus('Container No tidak valid (4 huruf + 7 angka). Contoh: ABCD1234567');
-
-      try {
-        const u = tg?.initDataUnsafe?.user || null;
-        const payload = {
-          source: 'webapp',
-          api_key: API_KEY,
-          data,
-          user_first_name: u ? (u.first_name || '') : '',
-          user_last_name:  u ? (u.last_name  || '') : ''
-        };
-
-        const res = await fetch(GAS_URL, {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify(payload)
-        });
-        const json = await res.json();
-        if (json.ok) {
-          setStatus(json.msg || 'Data tersimpan.', true);
-          try { tg?.HapticFeedback?.impactOccurred('light'); } catch {}
-          setTimeout(()=>tg?.close(), 700); // boleh dihapus jika tidak mau auto-close
-        } else {
-          setStatus(json.error || 'Gagal menyimpan.');
-        }
-      } catch (err) {
-        setStatus('Error jaringan: ' + err.message);
-      }
-    });
-  </script>
 </body>
 </html>
