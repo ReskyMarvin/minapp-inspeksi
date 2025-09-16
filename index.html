@@ -38,7 +38,7 @@
     <button id="sendBtn" disabled>Kirim ke Sheet</button>
   </div>
 
-  <p class="hint">Tips: izinkan akses kamera. Saat QR terdeteksi, hasil muncul otomatis. Tekan “Kirim ke Sheet” untuk mencatat.</p>
+  <p class="hint">Izinkan akses kamera. Saat QR terdeteksi, hasil muncul otomatis. Tekan “Kirim ke Sheet” untuk mencatat.</p>
 </div>
 
 <!-- jsQR CDN -->
@@ -57,7 +57,7 @@
 
   let stream = null;
   let rafId = null;
-  let lastQR = ''; // untuk hindari spam saat kode sama terbaca terus
+  let lastQR = '';
 
   async function startCamera() {
     try {
@@ -103,17 +103,14 @@
     const qr = (result.textContent || '').trim();
     if (!qr || qr === 'Belum ada hasil.') return;
 
-    // kirim 1x per hasil terbaru
     try {
       await fetch(WEB_APP_URL, {
         method: 'POST',
         mode: 'no-cors', // sederhana: kirim tanpa membaca respons
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qr, ua: navigator.userAgent })
+        body: JSON.stringify({ qr })
       });
       toast('Terkirim ke Sheet.', true);
-      // opsional hentikan kamera setelah kirim:
-      // stopCamera();
     } catch (e) {
       toast('Gagal kirim: ' + (e.message || e), false);
     }
@@ -121,7 +118,6 @@
 
   function toast(msg, ok) {
     result.innerHTML = (ok ? '<span class="ok">✅ ' : '<span class="err">⚠️ ') + msg + '</span>';
-    // kembalikan tampilan hasil QR setelah 1.5 detik (opsional)
     setTimeout(() => { result.textContent = lastQR || 'Belum ada hasil.'; enableSendIfHasResult(); }, 1500);
   }
 
@@ -137,10 +133,9 @@
 
     const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
     if (code && code.data) {
-      // hindari spam: update hanya jika berbeda dari lastQR
       if (code.data !== lastQR) {
         setScanResult(code.data);
-        // kalau mau auto-stop setelah baca pertama kali:
+        // kalau mau auto-stop setelah baca pertama:
         // stopCamera();
       }
     }
