@@ -6,19 +6,24 @@
   <title>QR Scanner (Mini App)</title>
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:16px;background:#f7f7f7}
-    .wrap{max-width:480px;margin:auto}
+    .wrap{max-width:520px;margin:auto}
+    h2{margin:0 0 12px}
     video,canvas{width:100%;border-radius:12px;background:#000}
     .row{display:flex;gap:8px;align-items:center;margin:12px 0}
     button{flex:1;padding:12px;border-radius:10px;border:0;cursor:pointer;font-weight:600}
     #startBtn{background:#0ea5e9;color:#fff}
     #stopBtn{background:#e5e7eb}
-    #result{padding:12px;border-radius:10px;background:#fff;word-break:break-word}
+    #sendBtn{background:#22c55e;color:#fff}
+    #result{padding:12px;border-radius:10px;background:#fff;word-break:break-word;min-height:42px}
     .hint{color:#6b7280;font-size:12px}
+    .ok{color:#16a34a;font-weight:600}
+    .err{color:#b91c1c;font-weight:600}
   </style>
 </head>
 <body>
 <div class="wrap">
   <h2>QR Scanner</h2>
+
   <div class="row">
     <button id="startBtn">Start Camera</button>
     <button id="stopBtn" disabled>Stop</button>
@@ -29,25 +34,33 @@
 
   <h3>Hasil</h3>
   <div id="result">Belum ada hasil.</div>
-  <p class="hint">Tips: arahkan QR ke kamera. Saat terdeteksi, hasil muncul otomatis.</p>
+  <div class="row">
+    <button id="sendBtn" disabled>Kirim ke Sheet</button>
+  </div>
+
+  <p class="hint">Tips: izinkan akses kamera. Saat QR terdeteksi, hasil muncul otomatis. Tekan “Kirim ke Sheet” untuk mencatat.</p>
 </div>
 
 <!-- jsQR CDN -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
 (() => {
+  // === GANTI URL INI DENGAN URL WEB APP DARI APPS SCRIPT ===
+  const WEB_APP_URL = '';
+
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   const result = document.getElementById('result');
   const startBtn = document.getElementById('startBtn');
   const stopBtn  = document.getElementById('stopBtn');
+  const sendBtn  = document.getElementById('sendBtn');
 
   let stream = null;
   let rafId = null;
+  let lastQR = ''; // untuk hindari spam saat kode sama terbaca terus
 
   async function startCamera() {
     try {
-      // minta kamera belakang kalau ada
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
         audio: false
@@ -59,7 +72,7 @@
       scanLoop();
     } catch (err) {
       console.error(err);
-      result.textContent = 'Gagal akses kamera: ' + err.message;
+      result.innerHTML = '<span class="err">Gagal akses kamera: ' + (err.message || err) + '</span>';
     }
   }
 
@@ -75,13 +88,47 @@
     stopBtn.disabled = true;
   }
 
+  function setScanResult(text) {
+    lastQR = text;
+    result.textContent = text;
+    enableSendIfHasResult();
+  }
+
+  function enableSendIfHasResult() {
+    const txt = (result.textContent || '').trim();
+    sendBtn.disabled = !txt || txt === 'Belum ada hasil.';
+  }
+
+  async function sendToSheet() {
+    const qr = (result.textContent || '').trim();
+    if (!qr || qr === 'Belum ada hasil.') return;
+
+    // kirim 1x per hasil terbaru
+    try {
+      await fetch(WEB_APP_URL, {
+        method: 'POST',
+        mode: 'no-cors', // sederhana: kirim tanpa membaca respons
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qr, ua: navigator.userAgent })
+      });
+      toast('Terkirim ke Sheet.', true);
+      // opsional hentikan kamera setelah kirim:
+      // stopCamera();
+    } catch (e) {
+      toast('Gagal kirim: ' + (e.message || e), false);
+    }
+  }
+
+  function toast(msg, ok) {
+    result.innerHTML = (ok ? '<span class="ok">✅ ' : '<span class="err">⚠️ ') + msg + '</span>';
+    // kembalikan tampilan hasil QR setelah 1.5 detik (opsional)
+    setTimeout(() => { result.textContent = lastQR || 'Belum ada hasil.'; enableSendIfHasResult(); }, 1500);
+  }
+
   function scanLoop() {
     const w = video.videoWidth;
     const h = video.videoHeight;
-    if (!w || !h) {
-      rafId = requestAnimationFrame(scanLoop);
-      return;
-    }
+    if (!w || !h) { rafId = requestAnimationFrame(scanLoop); return; }
 
     canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext('2d');
@@ -90,18 +137,19 @@
 
     const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
     if (code && code.data) {
-      result.textContent = code.data;
-      // (opsional) hentikan setelah berhasil:
-      // stopCamera();
+      // hindari spam: update hanya jika berbeda dari lastQR
+      if (code.data !== lastQR) {
+        setScanResult(code.data);
+        // kalau mau auto-stop setelah baca pertama kali:
+        // stopCamera();
+      }
     }
-
     rafId = requestAnimationFrame(scanLoop);
   }
 
   startBtn.addEventListener('click', startCamera);
   stopBtn.addEventListener('click', stopCamera);
-
-  // Bersihkan saat tab ditutup / navigasi
+  sendBtn.addEventListener('click', sendToSheet);
   window.addEventListener('pagehide', stopCamera);
 })();
 </script>
