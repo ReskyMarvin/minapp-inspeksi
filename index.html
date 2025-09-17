@@ -34,7 +34,7 @@
 
   <h3>Hasil</h3>
   <div id="result">Belum ada hasil.</div>
-  <div class="row">
+  <div class="row" id="sendRow">
     <button id="sendBtn" disabled>Kirim ke Sheet</button>
   </div>
 
@@ -46,18 +46,19 @@
 <script>
 (() => {
   // === SETTING: ganti dengan URL Web App GAS-mu ===
-  const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec';
+  const WEB_APP_URL   = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec';
   const CHECKLIST_URL = WEB_APP_URL; // doGet di URL yang sama
 
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  const result = document.getElementById('result');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn  = document.getElementById('stopBtn');
-  const sendBtn  = document.getElementById('sendBtn');
+  const video   = document.getElementById('video');
+  const canvas  = document.getElementById('canvas');
+  const result  = document.getElementById('result');
+  const startBtn= document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const sendBtn = document.getElementById('sendBtn');
+  const sendRow = document.getElementById('sendRow');
 
   let stream = null;
-  let rafId = null;
+  let rafId  = null;
   let lastQR = '';
 
   // === STATE checklist ===
@@ -85,6 +86,17 @@
     for (let i = 0; i < n; i++) setTimeout(() => beep(), i * intervalMs);
   }
 
+  // === Show/Hide tombol kirim berdasarkan validitas ===
+  function updateSendVisibility(isValid) {
+    if (isValid) {
+      sendRow.style.display = 'flex';
+      sendBtn.disabled = false;
+    } else {
+      sendRow.style.display = 'none';
+      sendBtn.disabled = true;
+    }
+  }
+
   // === Load checklist dari GAS (GET → { ok, list }) ===
   async function loadChecklist() {
     try {
@@ -94,9 +106,12 @@
         whitelist = new Set(json.list.map(s => s.trim()));
       }
       checklistLoaded = true;
+      // awal: belum ada hasil → sembunyikan tombol
+      updateSendVisibility(false);
     } catch (e) {
       console.warn('Gagal load checklist:', e);
-      checklistLoaded = true; // tetap lanjut scanning (anggap checklist kosong)
+      checklistLoaded = true;
+      updateSendVisibility(false);
     }
   }
 
@@ -111,92 +126,3 @@
       startBtn.disabled = true;
       stopBtn.disabled = false;
       scanLoop();
-    } catch (err) {
-      console.error(err);
-      result.innerHTML = '<span class="err">Gagal akses kamera: ' + (err.message || err) + '</span>';
-    }
-  }
-
-  function stopCamera() {
-    if (rafId) cancelAnimationFrame(rafId);
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-      stream = null;
-    }
-    video.pause();
-    video.srcObject = null;
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-  }
-
-  function setScanResult(text) {
-    lastQR = text;
-    result.textContent = text;
-    enableSendIfHasResult();
-  }
-
-  function enableSendIfHasResult() {
-    const txt = (result.textContent || '').trim();
-    sendBtn.disabled = !txt || txt === 'Belum ada hasil.';
-  }
-
-  async function sendToSheet() {
-    const qr = (result.textContent || '').trim();
-    if (!qr || qr === 'Belum ada hasil.') return;
-    try {
-      await fetch(WEB_APP_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qr })
-      });
-      toast('Terkirim ke Sheet.', true);
-    } catch (e) {
-      toast('Gagal kirim: ' + (e.message || e), false);
-    }
-  }
-
-  function toast(msg, ok) {
-    result.innerHTML = (ok ? '<span class="ok">✅ ' : '<span class="err">⚠️ ') + msg + '</span>';
-    setTimeout(() => { result.textContent = lastQR || 'Belum ada hasil.'; enableSendIfHasResult(); }, 1500);
-  }
-
-  function scanLoop() {
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-    if (!w || !h) { rafId = requestAnimationFrame(scanLoop); return; }
-
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, w, h);
-    const img = ctx.getImageData(0, 0, w, h);
-
-    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
-    if (code && code.data) {
-      const found = code.data;
-      if (found !== lastQR) {
-        setScanResult(found);
-
-        // === VALIDASI: ada di checklist → beep 1x; tidak ada → beep 4x cepat
-        const isValid = checklistLoaded && whitelist.has(found.trim());
-        if (isValid) {
-          beepNTimes(1, 120);
-        } else {
-          beepNTimes(4, 120);
-        }
-      }
-    }
-    rafId = requestAnimationFrame(scanLoop);
-  }
-
-  startBtn.addEventListener('click', startCamera);
-  stopBtn.addEventListener('click', stopCamera);
-  sendBtn.addEventListener('click', sendToSheet);
-  window.addEventListener('pagehide', stopCamera);
-
-  // Muat checklist saat halaman dibuka
-  loadChecklist();
-})();
-</script>
-</body>
-</html>
