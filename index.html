@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>TRON</title>
+  <title>Pallet Scanner — C1</title>
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:16px;background:#f7f7f7}
     .wrap{max-width:520px;margin:auto}
@@ -13,16 +13,20 @@
     button{flex:1;padding:12px;border-radius:10px;border:0;cursor:pointer;font-weight:600}
     #startBtn{background:#0ea5e9;color:#fff}
     #stopBtn{background:#e5e7eb}
-    #sendBtn{background:#22c55e;color:#fff}
-    #result{padding:12px;border-radius:10px;background:#fff;word-break:break-word;min-height:42px}
+    #okBtn{background:#22c55e;color:#fff}
+    #result{padding:12px;border-radius:10px;background:#fff;word-break:break-word;min-height:48px}
     .hint{color:#6b7280;font-size:12px}
     .ok{color:#16a34a;font-weight:600}
     .err{color:#b91c1c;font-weight:600}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}
+    .badge-ok{background:#dcfce7;color:#166534}
+    .badge-bad{background:#fee2e2;color:#991b1b}
+    .muted{color:#6b7280}
   </style>
 </head>
 <body>
 <div class="wrap">
-  <h2>QR Scanner</h2>
+  <h2>Pallet Scanner — C1</h2>
 
   <div class="row">
     <button id="startBtn">Start Camera</button>
@@ -34,46 +38,50 @@
 
   <h3>Hasil</h3>
   <div id="result">Belum ada hasil.</div>
+
   <div class="row">
-    <button id="sendBtn" disabled>Kirim ke Sheet</button>
+    <button id="okBtn" disabled>OK</button>
   </div>
 
-  <p class="hint">Izinkan akses kamera. Saat QR terdeteksi, hasil muncul otomatis dengan bunyi beep.</p>
+  <p class="hint">
+    Validasi berdasarkan <b>CHECKLIST_C1</b> (kolom A = BATCH, kolom B = PALLET_NO).<br/>
+    Jika ditemukan & belum USED → disimpan; jika tidak terdaftar/duplikat → ditolak.
+  </p>
+  <p class="muted" id="statusText"></p>
 </div>
 
-<!-- jsQR CDN -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
 (() => {
-  const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw8CQqPZzpx3KP42-v92elG9vLZcOZfuSmKOTmEL_zYpvL215ULSnnukPW8aQ83r3o/exec';
+  const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec'; // << GANTI
+  const CONTAINER   = 'C1';
 
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   const result = document.getElementById('result');
   const startBtn = document.getElementById('startBtn');
   const stopBtn  = document.getElementById('stopBtn');
-  const sendBtn  = document.getElementById('sendBtn');
+  const okBtn    = document.getElementById('okBtn');
+  const statusText = document.getElementById('statusText');
 
   let stream = null;
   let rafId = null;
   let lastQR = '';
+  let lastState = null; // {ok, valid, reason, batch, pallet}
+  const sessionSeen = new Set(); // anti-ulang tampil OK untuk QR yang sama
 
-  // === Tambahan: fungsi beep sederhana ===
-  function beep() {
-    try {
+  // Bunyi
+  function beepOK(){ tone(1200, 0.12, 0.15); }
+  function beepBad(){ tone(400,  0.18, 0.25); }
+  function tone(freq, vol=0.1, dur=0.2){
+    try{
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = 5000; // Hz
-      gain.gain.value = 20; // volume
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.15); // 0.2 detik
-    } catch(e) {
-      console.warn("Beep gagal:", e);
-    }
+      const gain= ctx.createGain();
+      osc.type="sine"; osc.frequency.value=freq; gain.gain.value=vol;
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime + dur);
+    }catch(e){}
   }
 
   async function startCamera() {
@@ -86,6 +94,7 @@
       await video.play();
       startBtn.disabled = true;
       stopBtn.disabled = false;
+      statusText.textContent = 'Kamera aktif. Arahkan QR ke kamera.';
       scanLoop();
     } catch (err) {
       console.error(err);
@@ -95,51 +104,69 @@
 
   function stopCamera() {
     if (rafId) cancelAnimationFrame(rafId);
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-      stream = null;
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    video.pause(); video.srcObject = null;
+    startBtn.disabled = false; stopBtn.disabled = true;
+    statusText.textContent = '';
+  }
+
+  function parseQR(qr){
+    const i = qr.indexOf('-');
+    const batch = i > 0 ? qr.slice(0, i) : '';
+    const pallet = i > 0 ? qr.slice(i+1) : '';
+    return { batch, pallet };
+  }
+
+  function renderResult(qr, state){
+    const { batch, pallet } = parseQR(qr);
+    let badge = '';
+    if (state?.valid) {
+      badge = `<div class="badge badge-ok">VALID (tersimpan)</div>`;
+    } else {
+      let reason = state?.reason || 'INVALID';
+      if (reason === 'NOT_LISTED') reason = 'Tidak terdaftar di CHECKLIST_C1';
+      if (reason === 'DUPLICATE') reason = 'Duplikat (sudah USED)';
+      if (reason === 'FORMAT') reason = 'Format QR tidak sesuai (BATCH-PALLET)';
+      badge = `<div class="badge badge-bad">${reason}</div>`;
     }
-    video.pause();
-    video.srcObject = null;
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+    result.innerHTML = `
+      <div>${qr}</div>
+      <div class="muted">Batch: <b>${batch||'-'}</b> • Pallet: <b>${pallet||'-'}</b></div>
+      ${badge}
+    `;
   }
 
-  function setScanResult(text) {
-    lastQR = text;
-    result.textContent = text;
-    enableSendIfHasResult();
+  function updateUIForState(state){
+    if (!state) { okBtn.disabled = true; return; }
+    if (state.valid) {
+      okBtn.disabled = sessionSeen.has(lastQR); // kalau sudah ditekan OK sekali, nonaktifkan
+      statusText.innerHTML = '<span class="ok">✅ Valid & tersimpan.</span>';
+    } else {
+      okBtn.disabled = true;
+      const msg =
+        state.reason === 'DUPLICATE' ? '⚠️ Sudah pernah discan (USED).'
+        : state.reason === 'NOT_LISTED' ? '❌ Tidak ada di checking list.'
+        : state.reason === 'FORMAT' ? '⚠️ Format QR harus BATCH-PALLET.'
+        : '❌ Tidak valid.';
+      statusText.innerHTML = `<span class="err">${msg}</span>`;
+    }
   }
 
-  function enableSendIfHasResult() {
-    const txt = (result.textContent || '').trim();
-    sendBtn.disabled = !txt || txt === 'Belum ada hasil.';
-  }
-
-  async function sendToSheet() {
-    const qr = (result.textContent || '').trim();
-    if (!qr || qr === 'Belum ada hasil.') return;
+  async function validateServer(qr) {
     try {
-      await fetch(WEB_APP_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qr })
+      const resp = await fetch(WEB_APP_URL, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ qr, container: CONTAINER })
       });
-      toast('Terkirim ke Sheet.', true);
+      return await resp.json(); // {ok, valid, reason?, batch, pallet}
     } catch (e) {
-      toast('Gagal kirim: ' + (e.message || e), false);
+      return { ok:false, error:String(e) };
     }
   }
 
-  function toast(msg, ok) {
-    result.innerHTML = (ok ? '<span class="ok">✅ ' : '<span class="err">⚠️ ') + msg + '</span>';
-    setTimeout(() => { result.textContent = lastQR || 'Belum ada hasil.'; enableSendIfHasResult(); }, 1500);
-  }
-
-  function scanLoop() {
-    const w = video.videoWidth;
-    const h = video.videoHeight;
+  async function scanLoop() {
+    const w = video.videoWidth, h = video.videoHeight;
     if (!w || !h) { rafId = requestAnimationFrame(scanLoop); return; }
 
     canvas.width = w; canvas.height = h;
@@ -147,19 +174,36 @@
     ctx.drawImage(video, 0, 0, w, h);
     const img = ctx.getImageData(0, 0, w, h);
 
-    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts:'dontInvert' });
     if (code && code.data) {
-      if (code.data !== lastQR) {
-        setScanResult(code.data);
-        beep(); // bunyi saat QR baru terbaca
+      const isNew = code.data !== lastQR;
+      if (isNew) {
+        const res = await validateServer(code.data);
+        if (!res.ok) {
+          lastQR = ''; lastState = null;
+          statusText.innerHTML = '<span class="err">Gagal validasi ke server.</span>';
+          beepBad();
+        } else {
+          lastQR = code.data;
+          lastState = res;
+          renderResult(lastQR, lastState);
+          updateUIForState(lastState);
+          res.valid ? beepOK() : beepBad();
+        }
       }
     }
     rafId = requestAnimationFrame(scanLoop);
   }
 
+  okBtn.addEventListener('click', () => {
+    if (!lastQR || !lastState?.valid) return;
+    sessionSeen.add(lastQR);
+    okBtn.disabled = true;
+    statusText.innerHTML = '<span class="ok">✔️ Ditandai selesai.</span>';
+  });
+
   startBtn.addEventListener('click', startCamera);
   stopBtn.addEventListener('click', stopCamera);
-  sendBtn.addEventListener('click', sendToSheet);
   window.addEventListener('pagehide', stopCamera);
 })();
 </script>
