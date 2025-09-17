@@ -45,7 +45,9 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
 (() => {
+  // === SETTING: ganti dengan URL Web App GAS-mu ===
   const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec';
+  const CHECKLIST_URL = WEB_APP_URL; // doGet di URL yang sama
 
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
@@ -58,21 +60,43 @@
   let rafId = null;
   let lastQR = '';
 
-  // === Tambahan: fungsi beep sederhana ===
+  // === STATE checklist ===
+  let whitelist = new Set();
+  let checklistLoaded = false;
+
+  // === Beep sederhana ===
   function beep() {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
-      osc.frequency.value = 5000; // Hz
-      gain.gain.value = 20; // volume
+      osc.frequency.value = 5000;
+      gain.gain.value = 20;
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
-      osc.stop(ctx.currentTime + 0.15); // 0.2 detik
+      osc.stop(ctx.currentTime + 0.15);
     } catch(e) {
       console.warn("Beep gagal:", e);
+    }
+  }
+  function beepNTimes(n = 1, intervalMs = 120) {
+    for (let i = 0; i < n; i++) setTimeout(() => beep(), i * intervalMs);
+  }
+
+  // === Load checklist dari GAS (GET → { ok, list }) ===
+  async function loadChecklist() {
+    try {
+      const res = await fetch(CHECKLIST_URL, { method: 'GET' });
+      const json = await res.json();
+      if (json && json.ok && Array.isArray(json.list)) {
+        whitelist = new Set(json.list.map(s => s.trim()));
+      }
+      checklistLoaded = true;
+    } catch (e) {
+      console.warn('Gagal load checklist:', e);
+      checklistLoaded = true; // tetap lanjut scanning (anggap checklist kosong)
     }
   }
 
@@ -149,9 +173,17 @@
 
     const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
     if (code && code.data) {
-      if (code.data !== lastQR) {
-        setScanResult(code.data);
-        beep(); // bunyi saat QR baru terbaca
+      const found = code.data;
+      if (found !== lastQR) {
+        setScanResult(found);
+
+        // === VALIDASI: ada di checklist → beep 1x; tidak ada → beep 4x cepat
+        const isValid = checklistLoaded && whitelist.has(found.trim());
+        if (isValid) {
+          beepNTimes(1, 120);
+        } else {
+          beepNTimes(4, 120);
+        }
       }
     }
     rafId = requestAnimationFrame(scanLoop);
@@ -161,6 +193,9 @@
   stopBtn.addEventListener('click', stopCamera);
   sendBtn.addEventListener('click', sendToSheet);
   window.addEventListener('pagehide', stopCamera);
+
+  // Muat checklist saat halaman dibuka
+  loadChecklist();
 })();
 </script>
 </body>
