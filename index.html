@@ -43,10 +43,7 @@
     <button id="okBtn" disabled>OK</button>
   </div>
 
-  <p class="hint">
-    Validasi berdasarkan <b>CHECKLIST_C1</b> (kolom A = BATCH, kolom B = PALLET_NO).<br/>
-    Jika ditemukan & belum USED → disimpan; jika tidak terdaftar/duplikat → ditolak.
-  </p>
+  <p class="hint">Format QR yang didukung: <code>BATCH=...;PALLET=...;QTY=...</code> (case-insensitive). Validasi ke <b>CHECKLIST_C1</b>.</p>
   <p class="muted" id="statusText"></p>
 </div>
 
@@ -67,8 +64,8 @@
   let stream = null;
   let rafId = null;
   let lastQR = '';
-  let lastState = null; // {ok, valid, reason, batch, pallet}
-  const sessionSeen = new Set(); // anti-ulang tampil OK untuk QR yang sama
+  let lastState = null; // {ok, valid, reason?, batch, pallet, qty}
+  const sessionSeen = new Set();
 
   // Bunyi
   function beepOK(){ tone(1200, 0.12, 0.15); }
@@ -110,28 +107,46 @@
     statusText.textContent = '';
   }
 
-  function parseQR(qr){
-    const i = qr.indexOf('-');
-    const batch = i > 0 ? qr.slice(0, i) : '';
-    const pallet = i > 0 ? qr.slice(i+1) : '';
-    return { batch, pallet };
+  function parseKv(raw){
+    const o = { batch:'', pallet:'', qty:'' };
+    if (raw.indexOf('=') === -1) return o;
+    raw.split(';').forEach(part=>{
+      const i = part.indexOf('=');
+      if (i === -1) return;
+      const k = part.slice(0,i).trim().toUpperCase();
+      const v = part.slice(i+1).trim();
+      if (k === 'BATCH') o.batch = v;
+      else if (k === 'PALLET') o.pallet = v;
+      else if (k === 'QTY') o.qty = v;
+    });
+    return o;
   }
 
   function renderResult(qr, state){
-    const { batch, pallet } = parseQR(qr);
+    const kv = parseKv(qr);
+    // fallback kecil untuk format "BATCH-PALLET"
+    if (!kv.batch || !kv.pallet) {
+      const j = qr.indexOf('-');
+      if (j > 0) {
+        kv.batch = kv.batch || qr.slice(0, j).trim();
+        kv.pallet = kv.pallet || qr.slice(j + 1).trim();
+      }
+    }
     let badge = '';
     if (state?.valid) {
       badge = `<div class="badge badge-ok">VALID (tersimpan)</div>`;
     } else {
       let reason = state?.reason || 'INVALID';
-      if (reason === 'NOT_LISTED') reason = 'Tidak terdaftar di CHECKLIST_C1';
+      if (reason === 'NOT_LISTED') reason = 'Tidak terdaftar (BATCH+PALLET)';
       if (reason === 'DUPLICATE') reason = 'Duplikat (sudah USED)';
-      if (reason === 'FORMAT') reason = 'Format QR tidak sesuai (BATCH-PALLET)';
+      if (reason === 'FORMAT') reason = 'Format salah: butuh BATCH & PALLET';
       badge = `<div class="badge badge-bad">${reason}</div>`;
     }
     result.innerHTML = `
       <div>${qr}</div>
-      <div class="muted">Batch: <b>${batch||'-'}</b> • Pallet: <b>${pallet||'-'}</b></div>
+      <div class="muted">
+        Batch: <b>${kv.batch || '-'}</b> • Pallet: <b>${kv.pallet || '-'}</b> • Qty: <b>${kv.qty || '-'}</b>
+      </div>
       ${badge}
     `;
   }
@@ -139,14 +154,14 @@
   function updateUIForState(state){
     if (!state) { okBtn.disabled = true; return; }
     if (state.valid) {
-      okBtn.disabled = sessionSeen.has(lastQR); // kalau sudah ditekan OK sekali, nonaktifkan
+      okBtn.disabled = sessionSeen.has(lastQR);
       statusText.innerHTML = '<span class="ok">✅ Valid & tersimpan.</span>';
     } else {
       okBtn.disabled = true;
       const msg =
-        state.reason === 'DUPLICATE' ? '⚠️ Sudah pernah discan (USED).'
+        state.reason === 'DUPLICATE' ? '⚠️ Sudah discan (USED).'
         : state.reason === 'NOT_LISTED' ? '❌ Tidak ada di checking list.'
-        : state.reason === 'FORMAT' ? '⚠️ Format QR harus BATCH-PALLET.'
+        : state.reason === 'FORMAT' ? '⚠️ Format harus BATCH & PALLET.'
         : '❌ Tidak valid.';
       statusText.innerHTML = `<span class="err">${msg}</span>`;
     }
@@ -159,7 +174,7 @@
         headers:{ 'Content-Type':'application/json' },
         body: JSON.stringify({ qr, container: CONTAINER })
       });
-      return await resp.json(); // {ok, valid, reason?, batch, pallet}
+      return await resp.json(); // {ok, valid, reason?, batch, pallet, qty}
     } catch (e) {
       return { ok:false, error:String(e) };
     }
