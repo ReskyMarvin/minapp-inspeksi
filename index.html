@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>QR Scanner (TRON)</title>
+  <title>TRON</title>
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:16px;background:#f7f7f7}
     .wrap{max-width:520px;margin:auto}
@@ -65,8 +65,8 @@
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
-      osc.frequency.value = 6000; // Hz
-      gain.gain.value = 4; // volume
+      osc.frequency.value = 5000; // Hz
+      gain.gain.value = 10; // volume
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
