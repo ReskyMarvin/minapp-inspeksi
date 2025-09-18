@@ -41,14 +41,13 @@
   <p class="hint">Izinkan akses kamera. Saat QR terdeteksi, hasil muncul otomatis dengan bunyi beep.</p>
 </div>
 
-<!-- jsQR CDN -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   // === SETTING: ganti dengan URL Web App GAS-mu ===
-  const WEB_APP_URL   = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec';
-  const CHECKLIST_URL = WEB_APP_URL;               // doGet (whitelist)
-  const LOG_URL       = WEB_APP_URL + '?mode=log'; // doGet (log)
+  const WEB_APP_URL      = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec';
+  const CHECKLISTS_URL   = WEB_APP_URL + '?mode=checklists';
+  const LOG_URL          = WEB_APP_URL + '?mode=log';
 
   const video   = document.getElementById('video');
   const canvas  = document.getElementById('canvas');
@@ -62,12 +61,16 @@ document.addEventListener('DOMContentLoaded', () => {
   let rafId  = null;
   let lastQR = '';
 
-  // === STATE checklist & log ===
-  let whitelist = new Set();
-  let checklistLoaded = false;
+  // === STATE: whitelist per sheet & log gabungan ===
+  // Map<string, Set<string>>
+  const whitelistBySheet = new Map();
+  let checklistsLoaded = false;
 
-  let loggedSet = new Set();
+  const loggedSet = new Set();
   let logLoaded = false;
+
+  // simpan sheet yang cocok untuk lastQR
+  let lastMatchedSheet = '';
 
   // === Beep sederhana ===
   function beep() {
@@ -89,8 +92,8 @@ document.addEventListener('DOMContentLoaded', () => {
     for (let i = 0; i < n; i++) setTimeout(() => beep(), i * intervalMs);
   }
 
-  function updateSendVisibility(shouldShow) {
-    if (shouldShow) {
+  function updateSendVisibility(show) {
+    if (show) {
       sendRow.style.display = 'flex';
       sendBtn.disabled = false;
     } else {
@@ -99,16 +102,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function loadChecklist() {
+  async function loadChecklists() {
     try {
-      const res = await fetch(CHECKLIST_URL, { method: 'GET' });
+      const res = await fetch(CHECKLISTS_URL, { method:'GET' });
       const json = await res.json();
-      if (json && json.ok && Array.isArray(json.list)) {
-        whitelist = new Set(json.list.map(s => s.trim()));
+      if (json && json.ok && Array.isArray(json.sheets)) {
+        whitelistBySheet.clear();
+        for (const s of json.sheets) {
+          const name = String(s.name || '').trim();
+          const list = Array.isArray(s.list) ? s.list : [];
+          whitelistBySheet.set(name, new Set(list.map(v => String(v || '').trim()).filter(Boolean)));
+        }
       }
-      checklistLoaded = true;
+      checklistsLoaded = true;
     } catch (e) {
-      checklistLoaded = true;
+      checklistsLoaded = true;
     } finally {
       updateSendVisibility(false);
     }
@@ -116,10 +124,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadLog() {
     try {
-      const res = await fetch(LOG_URL, { method: 'GET' });
+      const res = await fetch(LOG_URL, { method:'GET' });
       const json = await res.json();
       if (json && json.ok && Array.isArray(json.log)) {
-        loggedSet = new Set(json.log.map(s => s.trim()));
+        loggedSet.clear();
+        for (const v of json.log) loggedSet.add(String(v || '').trim());
       }
       logLoaded = true;
     } catch (e) {
@@ -129,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function startCamera() {
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (!navigator.mediaDevices?.getUserMedia) {
         result.innerHTML = '<span class="err">Browser tidak mendukung kamera.</span>';
         return;
       }
@@ -140,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
       video.srcObject = stream;
       await video.play();
       startBtn.disabled = true;
-      stopBtn.disabled = false;
+      stopBtn.disabled  = false;
       scanLoop();
     } catch (err) {
       result.innerHTML = '<span class="err">Gagal akses kamera: ' + (err.message || err) + '</span>';
@@ -149,14 +158,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function stopCamera() {
     if (rafId) cancelAnimationFrame(rafId);
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-      stream = null;
-    }
-    video.pause();
-    video.srcObject = null;
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    video.pause(); video.srcObject = null;
+    startBtn.disabled = false; stopBtn.disabled = true;
   }
 
   function setScanResult(text) {
@@ -166,17 +170,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function sendToSheet() {
     const qr = (result.textContent || '').trim();
-    if (!qr || qr === 'Belum ada hasil.') return;
+    if (!qr || !lastMatchedSheet) return;
     try {
       await fetch(WEB_APP_URL, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qr })
+        body: JSON.stringify({ qr, sheet: lastMatchedSheet })
       });
-      // anggap sukses → masukkan ke cache log lokal agar tombol langsung hilang
+      // Asumsikan sukses -> tandai sebagai sudah tercatat
       loggedSet.add(qr);
       toast('Terkirim ke Sheet.', true);
+      // setelah kirim, sembunyikan tombol
+      updateSendVisibility(false);
     } catch (e) {
       toast('Gagal kirim: ' + (e.message || e), false);
     }
@@ -186,16 +192,19 @@ document.addEventListener('DOMContentLoaded', () => {
     result.innerHTML = (ok ? '<span class="ok">✅ ' : '<span class="err">⚠️ ') + msg + '</span>';
     setTimeout(() => {
       result.textContent = lastQR || 'Belum ada hasil.';
-      const txt = (lastQR || '').trim();
-      const isValid  = checklistLoaded && txt && txt !== 'Belum ada hasil.' && whitelist.has(txt);
-      const isLogged = logLoaded && loggedSet.has(txt);
-      updateSendVisibility(isValid && !isLogged);
+      // tombol akan diatur ulang saat scan berikutnya
     }, 1200);
   }
 
+  function findMatchingSheet(qrText) {
+    for (const [name, set] of whitelistBySheet.entries()) {
+      if (set.has(qrText)) return name; // kembalikan sheet pertama yang cocok
+    }
+    return '';
+  }
+
   function scanLoop() {
-    const w = video.videoWidth;
-    const h = video.videoHeight;
+    const w = video.videoWidth, h = video.videoHeight;
     if (!w || !h) { rafId = requestAnimationFrame(scanLoop); return; }
 
     canvas.width = w; canvas.height = h;
@@ -203,31 +212,32 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.drawImage(video, 0, 0, w, h);
     const img = ctx.getImageData(0, 0, w, h);
 
-    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts:'dontInvert' });
     if (code && code.data) {
-      const found = code.data;
+      const found = code.data.trim();
       if (found !== lastQR) {
-        // tampilkan nilai mentah dulu
         setScanResult(found);
 
-        const trimmed = found.trim();
-        const isValid  = checklistLoaded && whitelist.has(trimmed);
-        const isLogged = logLoaded && loggedSet.has(trimmed);
+        // cari sheet yang cocok
+        lastMatchedSheet = (checklistsLoaded ? findMatchingSheet(found) : '');
+        const isValid  = !!lastMatchedSheet;
+        const isLogged = logLoaded && loggedSet.has(found);
 
         if (isValid) {
-          // valid → beep 1x
-          beepNTimes(1, 120);
-
-          // jika sudah ada di log → sembunyikan tombol + beri peringatan
+          // Valid
           if (isLogged) {
+            // Sudah tercatat -> peringatan + sembunyikan tombol
+            beepNTimes(1, 120);
             updateSendVisibility(false);
             result.innerHTML = found + '<br><span class="err">SUDAH DI SCAN, SUDAH MASUK LIST</span>';
           } else {
+            // Belum tercatat -> boleh kirim + info sheet
+            beepNTimes(1, 120);
             updateSendVisibility(true);
-            result.textContent = found;
+            result.innerHTML = found + '<br><span class="ok">MASUK LIST (' + lastMatchedSheet + ')</span>';
           }
         } else {
-          // tidak valid → beep 4x cepat + sembunyikan tombol
+          // Tidak valid (tidak ada di sheet mana pun)
           beepNTimes(4, 120);
           updateSendVisibility(false);
           result.innerHTML = found
@@ -241,13 +251,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // events
   startBtn.addEventListener('click', startCamera);
-  stopBtn.addEventListener('click', stopCamera);
-  sendBtn.addEventListener('click', sendToSheet);
+  stopBtn .addEventListener('click', stopCamera);
+  sendBtn .addEventListener('click', sendToSheet);
   window.addEventListener('pagehide', stopCamera);
 
   // init
   updateSendVisibility(false);
-  loadChecklist();
+  loadChecklists();
   loadLog();
 });
 </script>
