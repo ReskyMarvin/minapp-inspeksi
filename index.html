@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const gain = ctx.createGain();
       osc.type = "sine";
       osc.frequency.value = 5000;
-      gain.gain.value = 0.1; // aman untuk beberapa device
+      gain.gain.value = 0.1;
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
@@ -104,23 +104,18 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       checklistLoaded = true;
     } catch (e) {
-      checklistLoaded = true; // tetap lanjut scanning (anggap whitelist kosong)
+      checklistLoaded = true; // lanjut walau kosong
     } finally {
-      // di awal tombol kirim tetap tersembunyi
       updateSendVisibility(false);
     }
   }
 
   async function startCamera() {
     try {
-      // pastikan tombol aktif
-      startBtn.disabled = false;
-
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         result.innerHTML = '<span class="err">Browser tidak mendukung kamera.</span>';
         return;
       }
-
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
         audio: false
@@ -192,28 +187,36 @@ document.addEventListener('DOMContentLoaded', () => {
     if (code && code.data) {
       const found = code.data;
       if (found !== lastQR) {
+        // tampilkan hasil dasar
         setScanResult(found);
 
+        // cek whitelist → kontrol beep, tombol, dan pesan peringatan
         const isValid = checklistLoaded && whitelist.has(found.trim());
         if (isValid) {
           beepNTimes(1, 120);
+          updateSendVisibility(true);
+          result.textContent = found; // tampilkan QR saja saat valid
         } else {
           beepNTimes(4, 120);
+          updateSendVisibility(false);
+          // tampilkan peringatan "TIDAK MASUK LIST !!!"
+          result.innerHTML = found
+            ? (found + '<br><span class="err">TIDAK MASUK LIST !!!</span>')
+            : '<span class="err">TIDAK MASUK LIST !!!</span>';
         }
-        updateSendVisibility(!!isValid);
       }
     }
     rafId = requestAnimationFrame(scanLoop);
   }
 
-  // === Pasang event listener (pasti setelah DOM siap) ===
-  startBtn.disabled = false;
+  // events
   startBtn.addEventListener('click', startCamera);
   stopBtn.addEventListener('click', stopCamera);
   sendBtn.addEventListener('click', sendToSheet);
   window.addEventListener('pagehide', stopCamera);
 
-  // === Muat whitelist setelah tombol siap ===
+  // init
+  updateSendVisibility(false);
   loadChecklist();
 });
 </script>
