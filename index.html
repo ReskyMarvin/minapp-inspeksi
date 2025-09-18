@@ -47,7 +47,8 @@
 document.addEventListener('DOMContentLoaded', () => {
   // === SETTING: ganti dengan URL Web App GAS-mu ===
   const WEB_APP_URL   = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec';
-  const CHECKLIST_URL = WEB_APP_URL; // doGet di URL yang sama
+  const CHECKLIST_URL = WEB_APP_URL;               // doGet (whitelist)
+  const LOG_URL       = WEB_APP_URL + '?mode=log'; // doGet (log)
 
   const video   = document.getElementById('video');
   const canvas  = document.getElementById('canvas');
@@ -61,9 +62,12 @@ document.addEventListener('DOMContentLoaded', () => {
   let rafId  = null;
   let lastQR = '';
 
-  // === STATE checklist ===
+  // === STATE checklist & log ===
   let whitelist = new Set();
   let checklistLoaded = false;
+
+  let loggedSet = new Set();
+  let logLoaded = false;
 
   // === Beep sederhana ===
   function beep() {
@@ -85,8 +89,8 @@ document.addEventListener('DOMContentLoaded', () => {
     for (let i = 0; i < n; i++) setTimeout(() => beep(), i * intervalMs);
   }
 
-  function updateSendVisibility(isValid) {
-    if (isValid) {
+  function updateSendVisibility(shouldShow) {
+    if (shouldShow) {
       sendRow.style.display = 'flex';
       sendBtn.disabled = false;
     } else {
@@ -104,9 +108,22 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       checklistLoaded = true;
     } catch (e) {
-      checklistLoaded = true; // lanjut walau kosong
+      checklistLoaded = true;
     } finally {
       updateSendVisibility(false);
+    }
+  }
+
+  async function loadLog() {
+    try {
+      const res = await fetch(LOG_URL, { method: 'GET' });
+      const json = await res.json();
+      if (json && json.ok && Array.isArray(json.log)) {
+        loggedSet = new Set(json.log.map(s => s.trim()));
+      }
+      logLoaded = true;
+    } catch (e) {
+      logLoaded = true;
     }
   }
 
@@ -157,6 +174,8 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qr })
       });
+      // anggap sukses → masukkan ke cache log lokal agar tombol langsung hilang
+      loggedSet.add(qr);
       toast('Terkirim ke Sheet.', true);
     } catch (e) {
       toast('Gagal kirim: ' + (e.message || e), false);
@@ -168,8 +187,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
       result.textContent = lastQR || 'Belum ada hasil.';
       const txt = (lastQR || '').trim();
-      const isValid = checklistLoaded && txt && txt !== 'Belum ada hasil.' && whitelist.has(txt);
-      updateSendVisibility(!!isValid);
+      const isValid  = checklistLoaded && txt && txt !== 'Belum ada hasil.' && whitelist.has(txt);
+      const isLogged = logLoaded && loggedSet.has(txt);
+      updateSendVisibility(isValid && !isLogged);
     }, 1200);
   }
 
@@ -187,19 +207,29 @@ document.addEventListener('DOMContentLoaded', () => {
     if (code && code.data) {
       const found = code.data;
       if (found !== lastQR) {
-        // tampilkan hasil dasar
+        // tampilkan nilai mentah dulu
         setScanResult(found);
 
-        // cek whitelist → kontrol beep, tombol, dan pesan peringatan
-        const isValid = checklistLoaded && whitelist.has(found.trim());
+        const trimmed = found.trim();
+        const isValid  = checklistLoaded && whitelist.has(trimmed);
+        const isLogged = logLoaded && loggedSet.has(trimmed);
+
         if (isValid) {
+          // valid → beep 1x
           beepNTimes(1, 120);
-          updateSendVisibility(true);
-          result.textContent = found; // tampilkan QR saja saat valid
+
+          // jika sudah ada di log → sembunyikan tombol + beri peringatan
+          if (isLogged) {
+            updateSendVisibility(false);
+            result.innerHTML = found + '<br><span class="err">SUDAH DI SCAN, SUDAH MASUK LIST</span>';
+          } else {
+            updateSendVisibility(true);
+            result.textContent = found;
+          }
         } else {
+          // tidak valid → beep 4x cepat + sembunyikan tombol
           beepNTimes(4, 120);
           updateSendVisibility(false);
-          // tampilkan peringatan "TIDAK MASUK LIST !!!"
           result.innerHTML = found
             ? (found + '<br><span class="err">TIDAK MASUK LIST !!!</span>')
             : '<span class="err">TIDAK MASUK LIST !!!</span>';
@@ -218,6 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // init
   updateSendVisibility(false);
   loadChecklist();
+  loadLog();
 });
 </script>
 </body>
