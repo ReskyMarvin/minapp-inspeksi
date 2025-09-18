@@ -45,9 +45,9 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   // === SETTING: ganti dengan URL Web App GAS-mu ===
-  const WEB_APP_URL      = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec';
-  const CHECKLISTS_URL   = WEB_APP_URL + '?mode=checklists';
-  const LOG_URL          = WEB_APP_URL + '?mode=log';
+  const WEB_APP_URL    = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec';
+  const CHECKLISTS_URL = WEB_APP_URL + '?mode=checklists';
+  const USED_URL       = WEB_APP_URL + '?mode=used';
 
   const video   = document.getElementById('video');
   const canvas  = document.getElementById('canvas');
@@ -61,15 +61,15 @@ document.addEventListener('DOMContentLoaded', () => {
   let rafId  = null;
   let lastQR = '';
 
-  // === STATE: whitelist per sheet & log gabungan ===
-  // Map<string, Set<string>>
+  // Whitelist per sheet: Map<sheetName, Set<qr>>
   const whitelistBySheet = new Map();
   let checklistsLoaded = false;
 
-  const loggedSet = new Set();
-  let logLoaded = false;
+  // Used map: Map<qr, sheetName>
+  const usedMap = new Map();
+  let usedLoaded = false;
 
-  // simpan sheet yang cocok untuk lastQR
+  // Sheet yang cocok untuk lastQR
   let lastMatchedSheet = '';
 
   // === Beep sederhana ===
@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadChecklists() {
     try {
-      const res = await fetch(CHECKLISTS_URL, { method:'GET' });
+      const res = await fetch(CHECKLISTS_URL, { method: 'GET' });
       const json = await res.json();
       if (json && json.ok && Array.isArray(json.sheets)) {
         whitelistBySheet.clear();
@@ -122,17 +122,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function loadLog() {
+  async function loadUsed() {
     try {
-      const res = await fetch(LOG_URL, { method:'GET' });
+      const res = await fetch(USED_URL, { method: 'GET' });
       const json = await res.json();
-      if (json && json.ok && Array.isArray(json.log)) {
-        loggedSet.clear();
-        for (const v of json.log) loggedSet.add(String(v || '').trim());
+      if (json && json.ok && Array.isArray(json.used)) {
+        usedMap.clear();
+        for (const it of json.used) {
+          const qr = String(it.qr || '').trim();
+          const sheet = String(it.sheet || '').trim();
+          if (qr && sheet) usedMap.set(qr, sheet);
+        }
       }
-      logLoaded = true;
+      usedLoaded = true;
     } catch (e) {
-      logLoaded = true;
+      usedLoaded = true;
     }
   }
 
@@ -168,6 +172,13 @@ document.addEventListener('DOMContentLoaded', () => {
     result.textContent = text;
   }
 
+  function findMatchingSheet(qrText) {
+    for (const [name, set] of whitelistBySheet.entries()) {
+      if (set.has(qrText)) return name;
+    }
+    return '';
+  }
+
   async function sendToSheet() {
     const qr = (result.textContent || '').trim();
     if (!qr || !lastMatchedSheet) return;
@@ -178,10 +189,9 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qr, sheet: lastMatchedSheet })
       });
-      // Asumsikan sukses -> tandai sebagai sudah tercatat
-      loggedSet.add(qr);
+      // anggap sukses → tandai di cache lokal agar tombol langsung hilang
+      usedMap.set(qr, lastMatchedSheet);
       toast('Terkirim ke Sheet.', true);
-      // setelah kirim, sembunyikan tombol
       updateSendVisibility(false);
     } catch (e) {
       toast('Gagal kirim: ' + (e.message || e), false);
@@ -192,15 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
     result.innerHTML = (ok ? '<span class="ok">✅ ' : '<span class="err">⚠️ ') + msg + '</span>';
     setTimeout(() => {
       result.textContent = lastQR || 'Belum ada hasil.';
-      // tombol akan diatur ulang saat scan berikutnya
     }, 1200);
-  }
-
-  function findMatchingSheet(qrText) {
-    for (const [name, set] of whitelistBySheet.entries()) {
-      if (set.has(qrText)) return name; // kembalikan sheet pertama yang cocok
-    }
-    return '';
   }
 
   function scanLoop() {
@@ -218,26 +220,24 @@ document.addEventListener('DOMContentLoaded', () => {
       if (found !== lastQR) {
         setScanResult(found);
 
-        // cari sheet yang cocok
-        lastMatchedSheet = (checklistsLoaded ? findMatchingSheet(found) : '');
+        lastMatchedSheet = checklistsLoaded ? findMatchingSheet(found) : '';
         const isValid  = !!lastMatchedSheet;
-        const isLogged = logLoaded && loggedSet.has(found);
+        const usedIn   = usedLoaded ? (usedMap.get(found) || '') : '';
 
         if (isValid) {
-          // Valid
-          if (isLogged) {
-            // Sudah tercatat -> peringatan + sembunyikan tombol
+          if (usedIn) {
+            // sudah pernah dipakai
             beepNTimes(1, 120);
             updateSendVisibility(false);
             result.innerHTML = found + '<br><span class="err">SUDAH DI SCAN, SUDAH MASUK LIST</span>';
           } else {
-            // Belum tercatat -> boleh kirim + info sheet
+            // valid & belum dipakai → boleh kirim
             beepNTimes(1, 120);
             updateSendVisibility(true);
             result.innerHTML = found + '<br><span class="ok">MASUK LIST (' + lastMatchedSheet + ')</span>';
           }
         } else {
-          // Tidak valid (tidak ada di sheet mana pun)
+          // tidak ada di checklist mana pun
           beepNTimes(4, 120);
           updateSendVisibility(false);
           result.innerHTML = found
@@ -258,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // init
   updateSendVisibility(false);
   loadChecklists();
-  loadLog();
+  loadUsed();
 });
 </script>
 </body>
