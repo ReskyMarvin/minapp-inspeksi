@@ -1,86 +1,239 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>QR Scanner Validator</title>
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>CROS – QR Outbound Scanner</title>
   <style>
-    body {
-      font-family: sans-serif;
-      text-align: center;
-      padding: 20px;
-      background: #f4f4f4;
+    :root { font-family: system-ui, Arial, sans-serif; }
+    body { margin: 0; padding: 16px; display: grid; gap: 12px; background:#0b0c10; color:#e5e7eb; }
+    header { display:flex; justify-content:space-between; align-items:center; }
+    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    button, select, input[type=text] {
+      padding:10px 12px; border-radius:10px; border:1px solid #2f3542; background:#111318; color:#e5e7eb;
     }
-    #reader {
-      width: 300px;
-      margin: auto;
-    }
-    #result {
-      margin-top: 20px;
-      font-weight: bold;
-    }
-    button {
-      padding: 10px 20px;
-      background: #0088cc;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-top: 10px;
-    }
+    button.primary { background:#2563eb; border-color:#2563eb; color:white; }
+    button.warn { background:#dc2626; border-color:#dc2626; color:white; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    #view { position:relative; max-width:640px; width:100%; aspect-ratio: 4/3; border-radius:12px; overflow:hidden; border:1px solid #2f3542;}
+    #video, #canvas { width:100%; height:100%; object-fit:cover; display:block; }
+    #overlay { position:absolute; inset:0; border:2px dashed rgba(255,255,255,.25); border-radius:12px; pointer-events:none; }
+    #status { padding:10px; border-radius:10px; background:#0f172a; border:1px solid #1f2937; }
+    .ok { color:#22c55e; }
+    .err { color:#f43f5e; }
+    .muted { color:#9ca3af; }
+    footer { font-size:12px; color:#9ca3af; margin-top:8px; }
+    .list { max-height:160px; overflow:auto; background:#0f172a; border:1px solid #1f2937; border-radius:10px; padding:8px; }
+    code { background:#111827; padding:2px 6px; border-radius:6px; }
   </style>
 </head>
 <body>
-  <h1>QR Scanner Validator</h1>
-  <div id="reader"></div>
-  <div id="result">Scan a QR code to validate...</div>
-  <button onclick="startScanner()">Start Scanner</button>
+  <header>
+    <h1 style="margin:0;font-size:18px;">CROS – QR Outbound Scanner</h1>
+    <a href="#" id="test-link" class="muted" title="Mode uji">Mode Uji</a>
+  </header>
 
+  <section class="row">
+    <select id="camera"></select>
+    <button id="start" class="primary">Mulai Kamera</button>
+    <button id="stop" class="warn" disabled>Hentikan</button>
+    <button id="torch" disabled>🔦 Torch</button>
+  </section>
+
+  <section id="view">
+    <video id="video" playsinline></video>
+    <canvas id="canvas" hidden></canvas>
+    <div id="overlay"></div>
+  </section>
+
+  <section class="row">
+    <input id="manual" type="text" placeholder="Input manual (paste QR jika perlu)" autocomplete="off"/>
+    <button id="send">Kirim Manual</button>
+  </section>
+
+  <section id="status" class="muted">Siap. Arahkan kamera ke QR.</section>
+  <section>
+    <div class="list" id="log"></div>
+  </section>
+
+  <!-- jsQR via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script>
-    const scriptURL = 'https://script.google.com/macros/s/YOUR_DEPLOYED_SCRIPT_ID/exec'; // Ganti dengan URL Apps Script kamu
+    // ======= KONFIGURASI =======
+    const ENDPOINT_URL = 'PASTE_URL_WEB_APP_APPS_SCRIPT_DI_SINI'; // <<<< GANTI INI
+    const SCAN_INTERVAL_MS = 120;    // jeda antar frame
+    const DEDUP_WINDOW_MS  = 20_000; // anti-duplikat 20 detik
 
-    function startScanner() {
-      document.getElementById("result").textContent = "Scanning...";
-      const html5QrCode = new Html5Qrcode("reader");
+    // ======= ELEMEN DOM =======
+    const $ = (s) => document.querySelector(s);
+    const cameraSel = $('#camera');
+    const btnStart  = $('#start');
+    const btnStop   = $('#stop');
+    const btnTorch  = $('#torch');
+    const video     = $('#video');
+    const canvas    = $('#canvas');
+    const ctx       = canvas.getContext('2d', { willReadFrequently: true });
+    const statusEl  = $('#status');
+    const logEl     = $('#log');
+    const manualInp = $('#manual');
+    const btnSend   = $('#send');
 
-      html5QrCode.start(
-        { facingMode: "environment" },
-        {
-          fps: 10,
-          qrbox: 250
-        },
-        qrCodeMessage => {
-          html5QrCode.stop();
-          validateQR(qrCodeMessage);
-        },
-        errorMessage => {
-          // Optional: handle scan errors
+    // ======= STATE =======
+    let stream = null;
+    let raf = null;
+    let scanning = false;
+    let lastScans = new Map(); // qr -> timestamp
+    let torchOn = false;
+    let track = null;
+
+    // ======= UTIL =======
+    function setStatus(msg, type='muted') {
+      statusEl.className = type;
+      statusEl.textContent = msg;
+    }
+    function addLog(line) {
+      const p = document.createElement('div');
+      p.textContent = line;
+      logEl.prepend(p);
+    }
+    function canUseTorch() {
+      try {
+        return track && 'torch' in (track.getCapabilities?.() || {});
+      } catch { return false; }
+    }
+    async function setTorch(on) {
+      if (!track) return;
+      try {
+        await track.applyConstraints({ advanced: [{ torch: on }] });
+        torchOn = on;
+        btnTorch.textContent = on ? '🔦 Torch (ON)' : '🔦 Torch';
+      } catch (e) {
+        console.debug('Torch not supported', e);
+      }
+    }
+    function dedup(qr) {
+      const now = Date.now();
+      // hapus entri lama
+      for (const [k, t] of lastScans) if (now - t > DEDUP_WINDOW_MS) lastScans.delete(k);
+      if (lastScans.has(qr)) return true;
+      lastScans.set(qr, now);
+      return false;
+    }
+    async function postQR(qr) {
+      try {
+        const res = await fetch(ENDPOINT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ qr })
+        });
+        const json = await res.json().catch(() => ({}));
+        if (json.ok) {
+          setStatus(`Terkirim: ${qr}`, 'ok');
+          addLog(`✅ ${new Date().toLocaleTimeString()} - ${qr}`);
+        } else {
+          setStatus(`Gagal: ${json.error || 'unknown'}`, 'err');
+          addLog(`❌ ${new Date().toLocaleTimeString()} - ${qr} → ${json.error || 'unknown'}`);
         }
-      ).catch(err => {
-        document.getElementById("result").textContent = `❌ Camera error: ${err}`;
-      });
+      } catch (e) {
+        setStatus(`Error jaringan: ${e.message}`, 'err');
+        addLog(`⚠️  NetErr - ${qr} → ${e.message}`);
+      }
     }
 
-    function validateQR(qr) {
-      fetch(scriptURL, {
-        method: 'POST',
-        body: JSON.stringify({ qr }),
-        headers: {
-          'Content-Type': 'application/json'
+    // ======= SCAN LOOP =======
+    function tick() {
+      if (!scanning) return;
+      const w = video.videoWidth, h = video.videoHeight;
+      if (w && h) {
+        if (canvas.width !== w) { canvas.width = w; canvas.height = h; }
+        ctx.drawImage(video, 0, 0, w, h);
+        const img = ctx.getImageData(0, 0, w, h);
+        const code = jsQR(img.data, w, h, { inversionAttempts: 'attemptBoth' });
+        if (code?.data) {
+          const qr = String(code.data).trim();
+          if (qr && !dedup(qr)) {
+            // bunyi beep kecil (opsional, silent jika gagal)
+            try { new AudioContext().resume().then(()=>{
+              const ac=new AudioContext(); const o=ac.createOscillator(), g=ac.createGain();
+              o.frequency.value=880; o.connect(g); g.connect(ac.destination);
+              o.start(); setTimeout(()=>{o.stop(); ac.close();},120);
+            }); } catch {}
+            postQR(qr);
+          }
         }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.ok) {
-          document.getElementById("result").textContent = `✅ QR accepted: ${qr}`;
-        } else {
-          document.getElementById("result").textContent = `❌ Rejected: ${data.error}`;
-        }
-      })
-      .catch(err => {
-        document.getElementById("result").textContent = `❌ Request failed: ${err}`;
+      }
+      setTimeout(()=> { raf = requestAnimationFrame(tick); }, SCAN_INTERVAL_MS);
+    }
+
+    // ======= CAMERA =======
+    async function listCameras() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      cameraSel.innerHTML = '';
+      cams.forEach((c, i) => {
+        const opt = document.createElement('option');
+        opt.value = c.deviceId;
+        opt.textContent = c.label || `Kamera ${i+1}`;
+        cameraSel.appendChild(opt);
       });
+    }
+    async function startCamera() {
+      await stopCamera();
+      const deviceId = cameraSel.value || undefined;
+      const constraints = deviceId
+        ? { video: { deviceId: { exact: deviceId }, focusMode: 'continuous' }, audio: false }
+        : { video: { facingMode: { ideal: 'environment' }, focusMode: 'continuous' }, audio: false };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      await video.play();
+      track = stream.getVideoTracks()[0];
+      btnTorch.disabled = !canUseTorch();
+      scanning = true;
+      setStatus('Memindai…', 'muted');
+      tick();
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+    }
+    async function stopCamera() {
+      scanning = false;
+      if (raf) cancelAnimationFrame(raf);
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null; track = null;
+      }
+      btnTorch.disabled = true;
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+      setStatus('Kamera berhenti.', 'muted');
+    }
+
+    // ======= EVENTS =======
+    btnStart.addEventListener('click', startCamera);
+    btnStop.addEventListener('click', stopCamera);
+    btnTorch.addEventListener('click', () => setTorch(!torchOn));
+    btnSend.addEventListener('click', () => {
+      const v = manualInp.value.trim();
+      if (!v) { setStatus('Input manual kosong.', 'err'); return; }
+      if (!dedup(v)) postQR(v); // hormati anti-duplikat
+      manualInp.value = '';
+    });
+    manualInp.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') btnSend.click(); });
+
+    // Auto init: permission → isi daftar kamera
+    (async () => {
+      try {
+        // meminta izin sekali sehingga label kamera bisa terbaca
+        const temp = await navigator.mediaDevices.getUserMedia({ video: true });
+        temp.getTracks().forEach(t => t.stop());
+      } catch {}
+      await listCameras();
+    })();
+
+    // Mode uji cepat (tanpa kamera): tambahkan ?test=QRDATA di URL
+    if (new URL(location.href).searchParams.has('test')) {
+      const val = new URL(location.href).searchParams.get('test');
+      addLog('Mode uji: ' + val);
+      postQR(val);
     }
   </script>
 </body>
