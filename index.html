@@ -1,381 +1,89 @@
-<!doctype html>
-<html lang="id">
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>TRON – Welcome & QR Scanner</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QR Validator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
-    :root{
-      --primary:#00f6ff;      /* neon cyan */
-      --accent:#7cff00;       /* neon green */
-      --bg1:#0b0f14;          /* dark */
-      --bg2:#111827;          /* dark 2 */
-      --ok:#22c55e;
-      --err:#ef4444;
-      --muted:#9ca3af;
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 40px;
+      background: #f4f4f4;
     }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg1);color:#e5e7eb}
-
-    /* WELCOME */
-    .welcome{
-      min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;
-      background:
-        radial-gradient(1200px 600px at 10% 10%, rgba(0,246,255,.08), transparent 60%),
-        radial-gradient(900px 500px at 90% 90%, rgba(124,255,0,.06), transparent 60%),
-        linear-gradient(180deg, #0b0f14 0%, #0e141b 100%);
+    input {
+      padding: 10px;
+      width: 80%;
+      margin-bottom: 10px;
     }
-    .card{
-      width:100%;max-width:560px;background:rgba(17,24,39,.75);
-      border:1px solid rgba(0,246,255,.25);border-radius:20px;padding:28px 22px;
-      box-shadow:0 0 20px rgba(0,246,255,.08), inset 0 0 30px rgba(124,255,0,.03);
-      text-align:center; position:relative; overflow:hidden;
+    button {
+      padding: 10px 20px;
+      background: #0088cc;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
     }
-    .scanline{position:absolute;left:0;right:0;top:-50%;height:50%;background:linear-gradient(to bottom, transparent, rgba(0,246,255,.08), transparent);animation:scan 5s linear infinite}
-    @keyframes scan{0%{top:-60%} 100%{top:120%}}
-    .logo{
-      width:96px;height:96px;margin:0 auto 14px auto;border-radius:50%;
-      display:grid;place-items:center;font-weight:900;font-size:24px;letter-spacing:2px;
-      color:#001217;background:var(--primary);
-      box-shadow:0 0 20px rgba(0,246,255,.7), inset 0 -6px 16px rgba(0,0,0,.2);
-      border:3px solid #003e42;
+    #qrcode {
+      margin-top: 20px;
     }
-    h1{margin:8px 0 6px 0;font-size:22px;letter-spacing:.6px}
-    .tagline{color:#cbd5e1;margin-bottom:16px}
-    .sub{font-size:13px;color:#9aa7b5;margin-bottom:10px}
-    .grid-btn{display:grid;gap:10px;margin-top:14px}
-    .btn{
-      appearance:none;border:1px solid rgba(0,246,255,.35);border-radius:12px;padding:14px 16px;
-      font-weight:800;cursor:pointer;font-size:16px;letter-spacing:.3px;
-      background:linear-gradient(180deg, rgba(0,246,255,.15), rgba(0,246,255,.07));
-      color:#e6fdff; box-shadow:0 6px 14px rgba(0,246,255,.08);
+    #result {
+      margin-top: 20px;
+      font-weight: bold;
     }
-    .btn:hover{filter:brightness(1.06)}
-    .btn-ghost{
-      background:linear-gradient(180deg, rgba(124,255,0,.14), rgba(124,255,0,.06));
-      border-color:rgba(124,255,0,.35); color:#f6fff2;
-    }
-    .note{font-size:12px;color:#93a2b2;margin-top:8px}
-
-    /* SCANNER */
-    .topbar{
-      position:sticky;top:0;background:var(--bg2);border-bottom:1px solid rgba(0,246,255,.18);
-      padding:10px 12px;display:flex;align-items:center;gap:10px;z-index:10
-    }
-    .back{border:1px solid rgba(0,246,255,.25);background:rgba(17,24,39,.6);color:#d1faff;
-      border-radius:10px;padding:8px 12px;cursor:pointer;font-weight:700}
-    h2{margin:0;font-size:18px;color:#d1faff;letter-spacing:.3px}
-    .wrap{max-width:520px;margin:auto;padding:16px}
-    .scanner h3{margin:16px 0 8px}
-    video,canvas{width:100%;border-radius:12px;background:#000;border:1px solid rgba(0,246,255,.2)}
-    .row{display:flex;gap:8px;align-items:center;margin:12px 0}
-    .btn-flat{flex:1;padding:12px;border-radius:10px;border:1px solid rgba(0,246,255,.25);cursor:pointer;font-weight:700;
-      background:rgba(17,24,39,.6);color:#d1faff}
-    #startBtn{background:linear-gradient(180deg, rgba(0,246,255,.2), rgba(0,246,255,.08));color:#001217}
-    #stopBtn{background:rgba(255,255,255,.06)}
-    #sendBtn{background:linear-gradient(180deg, rgba(124,255,0,.2), rgba(124,255,0,.08));color:#071a00}
-    #result{padding:12px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(0,246,255,.18);word-break:break-word;min-height:42px}
-    .hint{color:var(--muted);font-size:12px}
-    .ok{color:var(--ok);font-weight:600}
-    .err{color:var(--err);font-weight:600}
-
-    /* sections */
-    .hidden{display:none}
   </style>
 </head>
 <body>
+  <h1>QR Validator</h1>
+  <input type="text" id="qrText" placeholder="Enter QR string..." />
+  <br />
+  <button onclick="generateAndSend()">Generate & Validate</button>
+  <div id="qrcode"></div>
+  <div id="result"></div>
 
-<!-- ========== SECTION: WELCOME ========== -->
-<section id="welcome" class="welcome">
-  <div class="card">
-    <div class="scanline"></div>
-    <div class="logo">TRON</div>
-    <h1>Telegram Repository & Operational Network</h1>
-    <div class="tagline">Gateway operasional digital</div>
-    <div class="grid-btn">
-      <button id="goScanner" class="btn" aria-label="Buka QR Scanner">
-        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:8px">
-          <rect x="3" y="3" width="7" height="7"></rect>
-          <rect x="14" y="3" width="7" height="7"></rect>
-          <rect x="14" y="14" width="7" height="7"></rect>
-          <path d="M3 14h7v7H3z"></path>
-        </svg>
-        <span style="vertical-align:middle">QR Scanner</span>
-      </button>
-    </div>
+  <script>
+    const scriptURL = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec'; // Ganti dengan URL Apps Script kamu
 
-    <div class="note">Tips: gunakan kamera belakang (environment) untuk hasil scan cepat & akurat.</div>
-  </div>
-</section>
+    function generateAndSend() {
+      const text = document.getElementById("qrText").value.trim();
+      const qrContainer = document.getElementById("qrcode");
+      const resultDiv = document.getElementById("result");
+      qrContainer.innerHTML = "";
+      resultDiv.textContent = "";
 
-<!-- ========== SECTION: SCANNER ========== -->
-<section id="scanner" class="hidden">
-  <div class="topbar">
-    <button id="backBtn" class="back">← Kembali</button>
-    <h2>QR Scanner</h2>
-  </div>
-
-  <div class="wrap scanner">
-    <div class="row">
-      <button id="startBtn" class="btn-flat" type="button">Start Camera</button>
-      <button id="stopBtn"  class="btn-flat" type="button" disabled>Stop</button>
-    </div>
-
-    <video id="video" playsinline></video>
-    <canvas id="canvas" style="display:none;"></canvas>
-
-    <h3>Hasil</h3>
-    <div id="result">Belum ada hasil.</div>
-    <div class="row" id="sendRow" style="display:none">
-      <button id="sendBtn" class="btn-flat" type="button" disabled>Kirim ke Sheet</button>
-    </div>
-
-    <p class="hint">Melezatkan.</p>
-  </div>
-</section>
-
-<!-- jsQR CDN -->
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  /* =========================
-     NAV antar section
-  ==========================*/
-  const welcome  = document.getElementById('welcome');
-  const scannerS = document.getElementById('scanner');
-  const goScanner = document.getElementById('goScanner');
-  const backBtn = document.getElementById('backBtn');
-
-  function showWelcome(){
-    stopCamera();                 // pastikan kamera mati
-    welcome.classList.remove('hidden');
-    scannerS.classList.add('hidden');
-  }
-  function showScanner(){
-    welcome.classList.add('hidden');
-    scannerS.classList.remove('hidden');
-    window.scrollTo({top:0,behavior:'smooth'});
-  }
-
-  goScanner.addEventListener('click', () => {
-    showScanner();                // pindah ke scanner (user bisa klik Start Camera)
-  });
-    setTimeout(() => startCamera(), 50);
-  });
-  backBtn.addEventListener('click', showWelcome);
-
-  /* =========================
-     SCANNER (kode inti)
-  ==========================*/
-
-  // === SETTING: ganti dengan URL Web App GAS-mu ===
-  const WEB_APP_URL   = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec';
-  const CHECKLIST_URL = WEB_APP_URL;               // doGet (whitelist)
-  const LOG_URL       = WEB_APP_URL + '?mode=log'; // doGet (log)
-
-  const video   = document.getElementById('video');
-  const canvas  = document.getElementById('canvas');
-  const result  = document.getElementById('result');
-  const startBtn= document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
-  const sendBtn = document.getElementById('sendBtn');
-  const sendRow = document.getElementById('sendRow');
-
-  let stream = null;
-  let rafId  = null;
-  let lastQR = '';
-
-  // === STATE checklist & log ===
-  let whitelist = new Set();
-  let checklistLoaded = false;
-
-  let loggedSet = new Set();
-  let logLoaded = false;
-
-  // === Beep sederhana ===
-  function beep() {
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      const ctx = new Ctx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = 5000;
-      gain.gain.value = 0.1;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.15);
-    } catch(e) {}
-  }
-  function beepNTimes(n = 1, intervalMs = 110) {
-    for (let i = 0; i < n; i++) setTimeout(() => beep(), i * intervalMs);
-  }
-
-  function updateSendVisibility(shouldShow) {
-    if (shouldShow) {
-      sendRow.style.display = 'flex';
-      sendBtn.disabled = false;
-    } else {
-      sendRow.style.display = 'none';
-      sendBtn.disabled = true;
-    }
-  }
-
-  async function loadChecklist() {
-    try {
-      const res = await fetch(CHECKLIST_URL, { method: 'GET' });
-      const json = await res.json();
-      if (json && json.ok && Array.isArray(json.list)) {
-        whitelist = new Set(json.list.map(s => s.trim()));
-      }
-      checklistLoaded = true;
-    } catch (e) {
-      checklistLoaded = true;
-    } finally {
-      updateSendVisibility(false);
-    }
-  }
-
-  async function loadLog() {
-    try {
-      const res = await fetch(LOG_URL, { method: 'GET' });
-      const json = await res.json();
-      if (json && json.ok && Array.isArray(json.log)) {
-        loggedSet = new Set(json.log.map(s => s.trim()));
-      }
-      logLoaded = true;
-    } catch (e) {
-      logLoaded = true;
-    }
-  }
-
-  async function startCamera() {
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        result.innerHTML = '<span class="err">Browser tidak mendukung kamera.</span>';
+      if (!text) {
+        resultDiv.textContent = "❌ QR string is empty.";
         return;
       }
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-        audio: false
+
+      // Generate QR visual
+      new QRCode(qrContainer, {
+        text: text,
+        width: 200,
+        height: 200,
       });
-      video.srcObject = stream;
-      await video.play();
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      scanLoop();
-    } catch (err) {
-      result.innerHTML = '<span class="err">Gagal akses kamera: ' + (err.message || err) + '</span>';
-    }
-  }
 
-  function stopCamera() {
-    if (rafId) cancelAnimationFrame(rafId);
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-      stream = null;
-    }
-    if (!video.paused) video.pause();
-    video.srcObject = null;
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-  }
-
-  function setScanResult(text) {
-    lastQR = text;
-    result.textContent = text;
-  }
-
-  async function sendToSheet() {
-    const qr = (result.textContent || '').trim();
-    if (!qr || qr === 'Belum ada hasil.') return;
-    try {
-      await fetch(WEB_APP_URL, {
+      // Kirim ke Apps Script
+      fetch(scriptURL, {
         method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qr })
-      });
-      // anggap sukses → masukkan ke cache log lokal agar tombol langsung hilang
-      loggedSet.add(qr);
-      toast('Terkirim ke Sheet.', true);
-    } catch (e) {
-      toast('Gagal kirim: ' + (e.message || e), false);
-    }
-  }
-
-  function toast(msg, ok) {
-    result.innerHTML = (ok ? '<span class="ok">✅ ' : '<span class="err">⚠️ ') + msg + '</span>';
-    setTimeout(() => {
-      result.textContent = lastQR || 'Belum ada hasil.';
-      const txt = (lastQR || '').trim();
-      const isValid  = checklistLoaded && txt && txt !== 'Belum ada hasil.' && whitelist.has(txt);
-      const isLogged = logLoaded && loggedSet.has(txt);
-      updateSendVisibility(isValid && !isLogged);
-    }, 1200);
-  }
-
-  function scanLoop() {
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-    if (!w || !h) { rafId = requestAnimationFrame(scanLoop); return; }
-
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, w, h);
-    const img = ctx.getImageData(0, 0, w, h);
-
-    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
-    if (code && code.data) {
-      const found = code.data;
-      if (found !== lastQR) {
-        // tampilkan nilai mentah dulu
-        setScanResult(found);
-
-        const trimmed = found.trim();
-        const isValid  = checklistLoaded && whitelist.has(trimmed);
-        const isLogged = logLoaded && loggedSet.has(trimmed);
-
-        if (isValid) {
-          // valid → beep 1x
-          beepNTimes(1, 120);
-
-          // jika sudah ada di log → sembunyikan tombol + beri peringatan
-          if (isLogged) {
-            updateSendVisibility(false);
-            result.innerHTML = found + '<br><span class="err">SUDAH DI SCAN, SUDAH MASUK LIST</span>';
-          } else {
-            updateSendVisibility(true);
-            result.textContent = found;
-          }
-        } else {
-          // tidak valid → beep 4x cepat + sembunyikan tombol
-          beepNTimes(4, 120);
-          updateSendVisibility(false);
-          result.innerHTML = found
-            ? (found + '<span style="display:block" class="err">TIDAK MASUK LIST !!!</span>')
-            : '<span class="err">TIDAK MASUK LIST !!!</span>';
+        body: JSON.stringify({ qr: text }),
+        headers: {
+          'Content-Type': 'application/json'
         }
-      }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok) {
+          resultDiv.textContent = "✅ QR accepted and logged.";
+        } else {
+          resultDiv.textContent = `❌ Rejected: ${data.error}`;
+        }
+      })
+      .catch(err => {
+        resultDiv.textContent = `❌ Request failed: ${err}`;
+      });
     }
-    rafId = requestAnimationFrame(scanLoop);
-  }
-
-  // events
-  startBtn.addEventListener('click', startCamera);
-  stopBtn.addEventListener('click', stopCamera);
-  sendBtn.addEventListener('click', sendToSheet);
-  window.addEventListener('pagehide', stopCamera);
-
-  // init (preload data; tetap di welcome dulu)
-  updateSendVisibility(false);
-  loadChecklist();
-  loadLog();
-
-  // tampil awal: Welcome
-  showWelcome();
-});
-</script>
+  </script>
 </body>
 </html>
