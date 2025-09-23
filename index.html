@@ -3,171 +3,48 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>TRON – Welcome & QR Scanner</title>
+  <title>QR Scanner (Mini App)</title>
   <style>
-    :root{
-      --primary:#00f6ff;      /* neon cyan */
-      --accent:#7cff00;       /* neon green */
-      --bg1:#0b0f14;          /* dark */
-      --bg2:#111827;          /* dark 2 */
-      --ok:#22c55e;
-      --err:#ef4444;
-      --muted:#9ca3af;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg1);color:#e5e7eb}
-
-    /* WELCOME */
-    .welcome{
-      min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;
-      background:
-        radial-gradient(1200px 600px at 10% 10%, rgba(0,246,255,.08), transparent 60%),
-        radial-gradient(900px 500px at 90% 90%, rgba(124,255,0,.06), transparent 60%),
-        linear-gradient(180deg, #0b0f14 0%, #0e141b 100%);
-    }
-    .card{
-      width:100%;max-width:560px;background:rgba(17,24,39,.75);
-      border:1px solid rgba(0,246,255,.25);border-radius:20px;padding:28px 22px;
-      box-shadow:0 0 20px rgba(0,246,255,.08), inset 0 0 30px rgba(124,255,0,.03);
-      text-align:center; position:relative; overflow:hidden;
-    }
-    .scanline{position:absolute;left:0;right:0;top:-50%;height:50%;background:linear-gradient(to bottom, transparent, rgba(0,246,255,.08), transparent);animation:scan 5s linear infinite}
-    @keyframes scan{0%{top:-60%} 100%{top:120%}}
-    .logo{
-      width:96px;height:96px;margin:0 auto 14px auto;border-radius:50%;
-      display:grid;place-items:center;font-weight:900;font-size:24px;letter-spacing:2px;
-      color:#001217;background:var(--primary);
-      box-shadow:0 0 20px rgba(0,246,255,.7), inset 0 -6px 16px rgba(0,0,0,.2);
-      border:3px solid #003e42;
-    }
-    h1{margin:8px 0 6px 0;font-size:22px;letter-spacing:.6px}
-    .tagline{color:#cbd5e1;margin-bottom:16px}
-    .sub{font-size:13px;color:#9aa7b5;margin-bottom:10px}
-    .grid-btn{display:grid;gap:10px;margin-top:14px}
-    .btn{
-      appearance:none;border:1px solid rgba(0,246,255,.35);border-radius:12px;padding:14px 16px;
-      font-weight:800;cursor:pointer;font-size:16px;letter-spacing:.3px;
-      background:linear-gradient(180deg, rgba(0,246,255,.15), rgba(0,246,255,.07));
-      color:#e6fdff; box-shadow:0 6px 14px rgba(0,246,255,.08);
-    }
-    .btn:hover{filter:brightness(1.06)}
-    .btn-ghost{
-      background:linear-gradient(180deg, rgba(124,255,0,.14), rgba(124,255,0,.06));
-      border-color:rgba(124,255,0,.35); color:#f6fff2;
-    }
-    .note{font-size:12px;color:#93a2b2;margin-top:8px}
-
-    /* SCANNER */
-    .topbar{
-      position:sticky;top:0;background:var(--bg2);border-bottom:1px solid rgba(0,246,255,.18);
-      padding:10px 12px;display:flex;align-items:center;gap:10px;z-index:10
-    }
-    .back{border:1px solid rgba(0,246,255,.25);background:rgba(17,24,39,.6);color:#d1faff;
-      border-radius:10px;padding:8px 12px;cursor:pointer;font-weight:700}
-    h2{margin:0;font-size:18px;color:#d1faff;letter-spacing:.3px}
-    .wrap{max-width:520px;margin:auto;padding:16px}
-    .scanner h3{margin:16px 0 8px}
-    video,canvas{width:100%;border-radius:12px;background:#000;border:1px solid rgba(0,246,255,.2)}
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:16px;background:#f7f7f7}
+    .wrap{max-width:520px;margin:auto}
+    h2{margin:0 0 12px}
+    video,canvas{width:100%;border-radius:12px;background:#000}
     .row{display:flex;gap:8px;align-items:center;margin:12px 0}
-    .btn-flat{flex:1;padding:12px;border-radius:10px;border:1px solid rgba(0,246,255,.25);cursor:pointer;font-weight:700;
-      background:rgba(17,24,39,.6);color:#d1faff}
-    #startBtn{background:linear-gradient(180deg, rgba(0,246,255,.2), rgba(0,246,255,.08));color:#001217}
-    #stopBtn{background:rgba(255,255,255,.06)}
-    #sendBtn{background:linear-gradient(180deg, rgba(124,255,0,.2), rgba(124,255,0,.08));color:#071a00}
-    #result{padding:12px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(0,246,255,.18);word-break:break-word;min-height:42px}
-    .hint{color:var(--muted);font-size:12px}
-    .ok{color:var(--ok);font-weight:600}
-    .err{color:var(--err);font-weight:600}
-
-    /* sections */
-    .hidden{display:none}
+    button{flex:1;padding:12px;border-radius:10px;border:0;cursor:pointer;font-weight:600}
+    #startBtn{background:#0ea5e9;color:#fff}
+    #stopBtn{background:#e5e7eb}
+    #sendBtn{background:#22c55e;color:#fff}
+    #result{padding:12px;border-radius:10px;background:#fff;word-break:break-word;min-height:42px}
+    .hint{color:#6b7280;font-size:12px}
+    .ok{color:#16a34a;font-weight:600}
+    .err{color:#b91c1c;font-weight:600}
   </style>
 </head>
 <body>
+<div class="wrap">
+  <h2>QR Scanner</h2>
 
-<!-- ========== SECTION: WELCOME ========== -->
-<section id="welcome" class="welcome">
-  <div class="card">
-    <div class="scanline"></div>
-    <div class="logo">TRON</div>
-    <h1>Telegram Repository & Operational Network</h1>
-    <div class="tagline">Gateway operasional digital</div>
-    <div class="grid-btn">
-      <button id="goScanner" class="btn" aria-label="Buka QR Scanner">
-        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:8px">
-          <rect x="3" y="3" width="7" height="7"></rect>
-          <rect x="14" y="3" width="7" height="7"></rect>
-          <rect x="14" y="14" width="7" height="7"></rect>
-          <path d="M3 14h7v7H3z"></path>
-        </svg>
-        <span style="vertical-align:middle">QR Scanner</span>
-      </button>
-    </div>
-
-    <div class="note">Tips: gunakan kamera belakang (environment) untuk hasil scan cepat & akurat.</div>
-  </div>
-</section>
-
-<!-- ========== SECTION: SCANNER ========== -->
-<section id="scanner" class="hidden">
-  <div class="topbar">
-    <button id="backBtn" class="back">← Kembali</button>
-    <h2>QR Scanner</h2>
+  <div class="row">
+    <button id="startBtn" type="button">Start Camera</button>
+    <button id="stopBtn"  type="button" disabled>Stop</button>
   </div>
 
-  <div class="wrap scanner">
-    <div class="row">
-      <button id="startBtn" class="btn-flat" type="button">Start Camera</button>
-      <button id="stopBtn"  class="btn-flat" type="button" disabled>Stop</button>
-    </div>
+  <video id="video" playsinline></video>
+  <canvas id="canvas" style="display:none;"></canvas>
 
-    <video id="video" playsinline></video>
-    <canvas id="canvas" style="display:none;"></canvas>
-
-    <h3>Hasil</h3>
-    <div id="result">Belum ada hasil.</div>
-    <div class="row" id="sendRow" style="display:none">
-      <button id="sendBtn" class="btn-flat" type="button" disabled>Kirim ke Sheet</button>
-    </div>
-
-    <p class="hint">Melezatkan.</p>
+  <h3>Hasil</h3>
+  <div id="result">Belum ada hasil.</div>
+  <div class="row" id="sendRow" style="display:none">
+    <button id="sendBtn" type="button" disabled>Kirim ke Sheet</button>
   </div>
-</section>
+
+  <p class="hint">Melezatkan.</p>
+</div>
 
 <!-- jsQR CDN -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  /* =========================
-     NAV antar section
-  ==========================*/
-  const welcome  = document.getElementById('welcome');
-  const scannerS = document.getElementById('scanner');
-  const goScanner = document.getElementById('goScanner');
-  const backBtn = document.getElementById('backBtn');
-
-  function showWelcome(){
-    stopCamera();                 // pastikan kamera mati
-    welcome.classList.remove('hidden');
-    scannerS.classList.add('hidden');
-  }
-  function showScanner(){
-    welcome.classList.add('hidden');
-    scannerS.classList.remove('hidden');
-    window.scrollTo({top:0,behavior:'smooth'});
-  }
-
-  goScanner.addEventListener('click', () => {
-    showScanner();                // pindah ke scanner (user bisa klik Start Camera)
-  });
-    setTimeout(() => startCamera(), 50);
-  });
-  backBtn.addEventListener('click', showWelcome);
-
-  /* =========================
-     SCANNER (kode inti)
-  ==========================*/
-
   // === SETTING: ganti dengan URL Web App GAS-mu ===
   const WEB_APP_URL   = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec';
   const CHECKLIST_URL = WEB_APP_URL;               // doGet (whitelist)
@@ -276,7 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
       stream.getTracks().forEach(t => t.stop());
       stream = null;
     }
-    if (!video.paused) video.pause();
+    video.pause();
     video.srcObject = null;
     startBtn.disabled = false;
     stopBtn.disabled = true;
@@ -354,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
           beepNTimes(4, 120);
           updateSendVisibility(false);
           result.innerHTML = found
-            ? (found + '<span style="display:block" class="err">TIDAK MASUK LIST !!!</span>')
+            ? (found + '<br><span class="err">TIDAK MASUK LIST !!!</span>')
             : '<span class="err">TIDAK MASUK LIST !!!</span>';
         }
       }
@@ -368,13 +245,10 @@ document.addEventListener('DOMContentLoaded', () => {
   sendBtn.addEventListener('click', sendToSheet);
   window.addEventListener('pagehide', stopCamera);
 
-  // init (preload data; tetap di welcome dulu)
+  // init
   updateSendVisibility(false);
   loadChecklist();
   loadLog();
-
-  // tampil awal: Welcome
-  showWelcome();
 });
 </script>
 </body>
