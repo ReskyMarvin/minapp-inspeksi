@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Pallet Scanner — C1</title>
+  <title>QR Scanner (Mini App)</title>
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:16px;background:#f7f7f7}
     .wrap{max-width:520px;margin:auto}
@@ -13,24 +13,20 @@
     button{flex:1;padding:12px;border-radius:10px;border:0;cursor:pointer;font-weight:600}
     #startBtn{background:#0ea5e9;color:#fff}
     #stopBtn{background:#e5e7eb}
-    #okBtn{background:#22c55e;color:#fff}
-    #result{padding:12px;border-radius:10px;background:#fff;word-break:break-word;min-height:48px}
+    #sendBtn{background:#22c55e;color:#fff}
+    #result{padding:12px;border-radius:10px;background:#fff;word-break:break-word;min-height:42px}
     .hint{color:#6b7280;font-size:12px}
     .ok{color:#16a34a;font-weight:600}
     .err{color:#b91c1c;font-weight:600}
-    .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}
-    .badge-ok{background:#dcfce7;color:#166534}
-    .badge-bad{background:#fee2e2;color:#991b1b}
-    .muted{color:#6b7280}
   </style>
 </head>
 <body>
 <div class="wrap">
-  <h2>Pallet Scanner — C1</h2>
+  <h2>QR Scanner</h2>
 
   <div class="row">
-    <button id="startBtn">Start Camera</button>
-    <button id="stopBtn" disabled>Stop</button>
+    <button id="startBtn" type="button">Start Camera</button>
+    <button id="stopBtn"  type="button" disabled>Stop</button>
   </div>
 
   <video id="video" playsinline></video>
@@ -38,51 +34,118 @@
 
   <h3>Hasil</h3>
   <div id="result">Belum ada hasil.</div>
-
-  <div class="row">
-    <button id="okBtn" disabled>OK</button>
+  <div class="row" id="sendRow" style="display:none">
+    <button id="sendBtn" type="button" disabled>Kirim ke Sheet</button>
   </div>
 
-  <p class="hint">Format QR yang didukung: <code>BATCH=...;PALLET=...;QTY=...</code> (case-insensitive). Validasi ke <b>CHECKLIST_C1</b>.</p>
-  <p class="muted" id="statusText"></p>
+  <p class="hint">Izinkan akses kamera. Saat QR terdeteksi, hasil muncul otomatis dengan bunyi beep.</p>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
-(() => {
-  const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec'; // << GANTI
-  const CONTAINER   = 'C1';
+document.addEventListener('DOMContentLoaded', () => {
+  // === SETTING: ganti dengan URL Web App GAS-mu ===
+  const WEB_APP_URL    = 'https://script.google.com/macros/s/AKfycbwXeYhelczmcjC9cDKSJU_hbD_zrDn59PbS50U9RfdHFeTnvr6XZRleuSPem8zB_MH3/exec';
+  const CHECKLISTS_URL = WEB_APP_URL + '?mode=checklists';
+  const USED_URL       = WEB_APP_URL + '?mode=used';
 
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  const result = document.getElementById('result');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn  = document.getElementById('stopBtn');
-  const okBtn    = document.getElementById('okBtn');
-  const statusText = document.getElementById('statusText');
+  const video   = document.getElementById('video');
+  const canvas  = document.getElementById('canvas');
+  const result  = document.getElementById('result');
+  const startBtn= document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const sendBtn = document.getElementById('sendBtn');
+  const sendRow = document.getElementById('sendRow');
 
   let stream = null;
-  let rafId = null;
+  let rafId  = null;
   let lastQR = '';
-  let lastState = null; // {ok, valid, reason?, batch, pallet, qty}
-  const sessionSeen = new Set();
 
-  // Bunyi
-  function beepOK(){ tone(1200, 0.12, 0.15); }
-  function beepBad(){ tone(400,  0.18, 0.25); }
-  function tone(freq, vol=0.1, dur=0.2){
-    try{
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  // Whitelist per sheet: Map<sheetName, Set<qr>>
+  const whitelistBySheet = new Map();
+  let checklistsLoaded = false;
+
+  // Used map: Map<qr, sheetName>
+  const usedMap = new Map();
+  let usedLoaded = false;
+
+  // Sheet yang cocok untuk lastQR
+  let lastMatchedSheet = '';
+
+  // === Beep sederhana ===
+  function beep() {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new Ctx();
       const osc = ctx.createOscillator();
-      const gain= ctx.createGain();
-      osc.type="sine"; osc.frequency.value=freq; gain.gain.value=vol;
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(); osc.stop(ctx.currentTime + dur);
-    }catch(e){}
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 5000;
+      gain.gain.value = 0.1;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch(e) {}
+  }
+  function beepNTimes(n = 1, intervalMs = 120) {
+    for (let i = 0; i < n; i++) setTimeout(() => beep(), i * intervalMs);
+  }
+
+  function updateSendVisibility(show) {
+    if (show) {
+      sendRow.style.display = 'flex';
+      sendBtn.disabled = false;
+    } else {
+      sendRow.style.display = 'none';
+      sendBtn.disabled = true;
+    }
+  }
+
+  async function loadChecklists() {
+    try {
+      const res = await fetch(CHECKLISTS_URL, { method: 'GET' });
+      const json = await res.json();
+      if (json && json.ok && Array.isArray(json.sheets)) {
+        whitelistBySheet.clear();
+        for (const s of json.sheets) {
+          const name = String(s.name || '').trim();
+          const list = Array.isArray(s.list) ? s.list : [];
+          whitelistBySheet.set(name, new Set(list.map(v => String(v || '').trim()).filter(Boolean)));
+        }
+      }
+      checklistsLoaded = true;
+    } catch (e) {
+      checklistsLoaded = true;
+    } finally {
+      updateSendVisibility(false);
+    }
+  }
+
+  async function loadUsed() {
+    try {
+      const res = await fetch(USED_URL, { method: 'GET' });
+      const json = await res.json();
+      if (json && json.ok && Array.isArray(json.used)) {
+        usedMap.clear();
+        for (const it of json.used) {
+          const qr = String(it.qr || '').trim();
+          const sheet = String(it.sheet || '').trim();
+          if (qr && sheet) usedMap.set(qr, sheet);
+        }
+      }
+      usedLoaded = true;
+    } catch (e) {
+      usedLoaded = true;
+    }
   }
 
   async function startCamera() {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        result.innerHTML = '<span class="err">Browser tidak mendukung kamera.</span>';
+        return;
+      }
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
         audio: false
@@ -90,11 +153,9 @@
       video.srcObject = stream;
       await video.play();
       startBtn.disabled = true;
-      stopBtn.disabled = false;
-      statusText.textContent = 'Kamera aktif. Arahkan QR ke kamera.';
+      stopBtn.disabled  = false;
       scanLoop();
     } catch (err) {
-      console.error(err);
       result.innerHTML = '<span class="err">Gagal akses kamera: ' + (err.message || err) + '</span>';
     }
   }
@@ -104,83 +165,47 @@
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     video.pause(); video.srcObject = null;
     startBtn.disabled = false; stopBtn.disabled = true;
-    statusText.textContent = '';
   }
 
-  function parseKv(raw){
-    const o = { batch:'', pallet:'', qty:'' };
-    if (raw.indexOf('=') === -1) return o;
-    raw.split(';').forEach(part=>{
-      const i = part.indexOf('=');
-      if (i === -1) return;
-      const k = part.slice(0,i).trim().toUpperCase();
-      const v = part.slice(i+1).trim();
-      if (k === 'BATCH') o.batch = v;
-      else if (k === 'PALLET') o.pallet = v;
-      else if (k === 'QTY') o.qty = v;
-    });
-    return o;
+  function setScanResult(text) {
+    lastQR = text;
+    result.textContent = text;
   }
 
-  function renderResult(qr, state){
-    const kv = parseKv(qr);
-    // fallback kecil untuk format "BATCH-PALLET"
-    if (!kv.batch || !kv.pallet) {
-      const j = qr.indexOf('-');
-      if (j > 0) {
-        kv.batch = kv.batch || qr.slice(0, j).trim();
-        kv.pallet = kv.pallet || qr.slice(j + 1).trim();
-      }
+  function findMatchingSheet(qrText) {
+    for (const [name, set] of whitelistBySheet.entries()) {
+      if (set.has(qrText)) return name;
     }
-    let badge = '';
-    if (state?.valid) {
-      badge = `<div class="badge badge-ok">VALID (tersimpan)</div>`;
-    } else {
-      let reason = state?.reason || 'INVALID';
-      if (reason === 'NOT_LISTED') reason = 'Tidak terdaftar (BATCH+PALLET)';
-      if (reason === 'DUPLICATE') reason = 'Duplikat (sudah USED)';
-      if (reason === 'FORMAT') reason = 'Format salah: butuh BATCH & PALLET';
-      badge = `<div class="badge badge-bad">${reason}</div>`;
-    }
-    result.innerHTML = `
-      <div>${qr}</div>
-      <div class="muted">
-        Batch: <b>${kv.batch || '-'}</b> • Pallet: <b>${kv.pallet || '-'}</b> • Qty: <b>${kv.qty || '-'}</b>
-      </div>
-      ${badge}
-    `;
+    return '';
   }
 
-  function updateUIForState(state){
-    if (!state) { okBtn.disabled = true; return; }
-    if (state.valid) {
-      okBtn.disabled = sessionSeen.has(lastQR);
-      statusText.innerHTML = '<span class="ok">✅ Valid & tersimpan.</span>';
-    } else {
-      okBtn.disabled = true;
-      const msg =
-        state.reason === 'DUPLICATE' ? '⚠️ Sudah discan (USED).'
-        : state.reason === 'NOT_LISTED' ? '❌ Tidak ada di checking list.'
-        : state.reason === 'FORMAT' ? '⚠️ Format harus BATCH & PALLET.'
-        : '❌ Tidak valid.';
-      statusText.innerHTML = `<span class="err">${msg}</span>`;
-    }
-  }
-
-  async function validateServer(qr) {
+  async function sendToSheet() {
+    const qr = (result.textContent || '').trim();
+    if (!qr || !lastMatchedSheet) return;
     try {
-      const resp = await fetch(WEB_APP_URL, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ qr, container: CONTAINER })
+      await fetch(WEB_APP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qr, sheet: lastMatchedSheet })
       });
-      return await resp.json(); // {ok, valid, reason?, batch, pallet, qty}
+      // anggap sukses → tandai di cache lokal agar tombol langsung hilang
+      usedMap.set(qr, lastMatchedSheet);
+      toast('Terkirim ke Sheet.', true);
+      updateSendVisibility(false);
     } catch (e) {
-      return { ok:false, error:String(e) };
+      toast('Gagal kirim: ' + (e.message || e), false);
     }
   }
 
-  async function scanLoop() {
+  function toast(msg, ok) {
+    result.innerHTML = (ok ? '<span class="ok">✅ ' : '<span class="err">⚠️ ') + msg + '</span>';
+    setTimeout(() => {
+      result.textContent = lastQR || 'Belum ada hasil.';
+    }, 1200);
+  }
+
+  function scanLoop() {
     const w = video.videoWidth, h = video.videoHeight;
     if (!w || !h) { rafId = requestAnimationFrame(scanLoop); return; }
 
@@ -191,36 +216,50 @@
 
     const code = jsQR(img.data, img.width, img.height, { inversionAttempts:'dontInvert' });
     if (code && code.data) {
-      const isNew = code.data !== lastQR;
-      if (isNew) {
-        const res = await validateServer(code.data);
-        if (!res.ok) {
-          lastQR = ''; lastState = null;
-          statusText.innerHTML = '<span class="err">Gagal validasi ke server.</span>';
-          beepBad();
+      const found = code.data.trim();
+      if (found !== lastQR) {
+        setScanResult(found);
+
+        lastMatchedSheet = checklistsLoaded ? findMatchingSheet(found) : '';
+        const isValid  = !!lastMatchedSheet;
+        const usedIn   = usedLoaded ? (usedMap.get(found) || '') : '';
+
+        if (isValid) {
+          if (usedIn) {
+            // sudah pernah dipakai
+            beepNTimes(1, 120);
+            updateSendVisibility(false);
+            result.innerHTML = found + '<br><span class="err">SUDAH DI SCAN, SUDAH MASUK LIST</span>';
+          } else {
+            // valid & belum dipakai → boleh kirim
+            beepNTimes(1, 120);
+            updateSendVisibility(true);
+            result.innerHTML = found + '<br><span class="ok">MASUK LIST (' + lastMatchedSheet + ')</span>';
+          }
         } else {
-          lastQR = code.data;
-          lastState = res;
-          renderResult(lastQR, lastState);
-          updateUIForState(lastState);
-          res.valid ? beepOK() : beepBad();
+          // tidak ada di checklist mana pun
+          beepNTimes(4, 120);
+          updateSendVisibility(false);
+          result.innerHTML = found
+            ? (found + '<br><span class="err">TIDAK MASUK LIST !!!</span>')
+            : '<span class="err">TIDAK MASUK LIST !!!</span>';
         }
       }
     }
     rafId = requestAnimationFrame(scanLoop);
   }
 
-  okBtn.addEventListener('click', () => {
-    if (!lastQR || !lastState?.valid) return;
-    sessionSeen.add(lastQR);
-    okBtn.disabled = true;
-    statusText.innerHTML = '<span class="ok">✔️ Ditandai selesai.</span>';
-  });
-
+  // events
   startBtn.addEventListener('click', startCamera);
-  stopBtn.addEventListener('click', stopCamera);
+  stopBtn .addEventListener('click', stopCamera);
+  sendBtn .addEventListener('click', sendToSheet);
   window.addEventListener('pagehide', stopCamera);
-})();
+
+  // init
+  updateSendVisibility(false);
+  loadChecklists();
+  loadUsed();
+});
 </script>
 </body>
 </html>
