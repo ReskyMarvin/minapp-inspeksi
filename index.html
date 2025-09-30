@@ -1,105 +1,168 @@
-<!doctype html>
-<html lang="id">
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>QR Scanner (Mini App)</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mini App Starter</title>
+  <!-- Telegram Mini App SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:16px;background:#0f172a;color:#fff}
-    .wrap{max-width:520px;margin:auto}
-
-    /* === Welcome Screen === */
-    #welcome{
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      justify-content:center;
-      height:100vh;
-      text-align:center;
+    :root {
+      /* Fallbacks */
+      --bg: #0f0f0f;
+      --fg: #ffffff;
+      --card: #1b1b1b;
+      --muted: #a0a0a0;
+      --accent: #3b82f6;
     }
-    #welcome img{
-      width:160px;
-      height:160px;
-      margin-bottom:20px;
+    /* Adapt to Telegram theme automatically */
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #ffffff; --fg: #111111; --card: #f5f5f5; --muted: #666; }
     }
-    #welcome h1{
-      font-size:32px;
-      color:#0ff;
-      text-shadow:0 0 12px #0ff;
-      margin-bottom:20px;
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: var(--bg); color: var(--fg);
     }
-    #welcome button{
-      padding:12px 24px;
-      border:0;
-      border-radius:10px;
-      font-weight:600;
-      font-size:16px;
-      cursor:pointer;
-      background:#0ea5e9;
-      color:#fff;
-      box-shadow:0 0 10px #0ea5e9;
+    .wrap { min-height: 100%; display: grid; place-items: center; padding: 16px; }
+    .card { width: 100%; max-width: 560px; background: var(--card); border-radius: 16px; padding: 18px; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+    h1 { font-size: 1.25rem; margin: 0 0 12px; }
+    p { margin: 0 0 16px; color: var(--muted); }
+    form { display: grid; gap: 12px; }
+    .row { display: grid; gap: 12px; }
+    @media (min-width: 560px) { .row { grid-template-columns: 1fr 1fr; } }
+    label { font-size: .9rem; color: var(--muted); }
+    input, select, textarea {
+      width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.04); color: var(--fg); outline: none;
     }
-
-    /* === Scanner Section (hidden awal) === */
-    #scanner{display:none}
-    video,canvas{width:100%;border-radius:12px;background:#000}
-    .row{display:flex;gap:8px;align-items:center;margin:12px 0}
-    button{flex:1;padding:12px;border-radius:10px;border:0;cursor:pointer;font-weight:600}
-    #startBtn{background:#0ea5e9;color:#fff}
-    #stopBtn{background:#e5e7eb}
-    #sendBtn{background:#22c55e;color:#fff}
-    #result{padding:12px;border-radius:10px;background:#fff;color:#000;word-break:break-word;min-height:42px}
-    .hint{color:#9ca3af;font-size:12px}
-    .ok{color:#16a34a;font-weight:600}
-    .err{color:#b91c1c;font-weight:600}
+    input::placeholder { color: #9aa0a6; }
+    .hint { font-size: .8rem; color: var(--muted); }
+    .divider { height: 1px; background: rgba(255,255,255,.08); margin: 8px 0 12px; }
+    .footer { display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 6px; }
+    .btn {
+      padding: 12px 14px; border-radius: 12px; border: none; cursor: pointer;
+      background: var(--accent); color: white; font-weight: 600; width: 100%;
+    }
+    .ghost { background: transparent; border: 1px solid rgba(255,255,255,.14); color: var(--fg); }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
-<div class="wrap">
+  <div class="wrap">
+    <div class="card">
+      <h1>Form Inspeksi (Demo)</h1>
+      <p>Contoh Mini App responsif. Data akan dikirim balik ke bot menggunakan <code>sendData()</code>.</p>
 
-  <!-- Welcome Screen -->
-  <section id="welcome">
-    <!-- ganti src dengan path logo TRON-mu -->
-    <img src="tron-logo.png" alt="TRON Logo" />
-    <h1>TRON</h1>
-    <button id="enterBtn">Mulai Scan</button>
-  </section>
+      <form id="form">
+        <div class="row">
+          <div>
+            <label for="container">Container</label>
+            <input id="container" name="container" placeholder="C1 / C2 / ..." required />
+          </div>
+          <div>
+            <label for="date">Date</label>
+            <input id="date" name="date" type="date" required />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="seal">Seal No</label>
+            <input id="seal" name="seal" placeholder="e.g. ABC123" required />
+          </div>
+          <div>
+            <label for="plate">Plate No</label>
+            <input id="plate" name="plate" placeholder="DB 1234 XX" required />
+          </div>
+        </div>
+        <div>
+          <label for="notes">Notes</label>
+          <textarea id="notes" name="notes" rows="3" placeholder="Catatan (opsional)"></textarea>
+          <div class="hint">Tekan tombol "Kirim" (MainButton) untuk submit.</div>
+        </div>
+        <div class="divider"></div>
+        <div class="footer">
+          <button type="button" id="reset" class="btn ghost">Reset</button>
+          <button type="submit" class="btn">Kirim</button>
+        </div>
+      </form>
 
-  <!-- Scanner Section -->
-  <section id="scanner">
-    <h2>QR Scanner</h2>
-
-    <div class="row">
-      <button id="startBtn" type="button">Start Camera</button>
-      <button id="stopBtn"  type="button" disabled>Stop</button>
+      <div id="ok" class="hidden hint">Terkirim. Kamu bisa menutup Mini App ini.</div>
     </div>
+  </div>
 
-    <video id="video" playsinline></video>
-    <canvas id="canvas" style="display:none;"></canvas>
+  <script>
+    // --- Telegram SDK bootstrap ---
+    const tg = window.Telegram?.WebApp;
+    tg?.ready();            // Tell Telegram we are ready
+    tg?.expand();           // Expand to full height
 
-    <h3>Hasil</h3>
-    <div id="result">Belum ada hasil.</div>
-    <div class="row" id="sendRow" style="display:none">
-      <button id="sendBtn" type="button" disabled>Kirim ke Sheet</button>
-    </div>
+    // Optional: mirror theme to CSS vars (for nicer theming)
+    function applyTheme() {
+      if (!tg) return;
+      const theme = tg.themeParams || {};
+      const map = {
+        '--bg': theme.bg_color,
+        '--fg': theme.text_color,
+        '--card': theme.secondary_bg_color,
+        '--muted': theme.hint_color,
+        '--accent': theme.button_color,
+      };
+      for (const k in map) if (map[k]) document.documentElement.style.setProperty(k, map[k]);
+      if (theme.button_text_color) document.documentElement.style.setProperty('--btnText', theme.button_text_color);
+    }
+    applyTheme();
 
-    <p class="hint">Melezatkan.</p>
-  </section>
-</div>
+    // --- Form logic ---
+    const form = document.getElementById('form');
+    const ok   = document.getElementById('ok');
+    const resetBtn = document.getElementById('reset');
 
-<!-- jsQR CDN -->
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  // tombol masuk dari welcome ke scanner
-  document.getElementById('enterBtn').addEventListener('click', () => {
-    document.getElementById('welcome').style.display = 'none';
-    document.getElementById('scanner').style.display = 'block';
-  });
+    // Hook Telegram MainButton as duplicate submit
+    if (tg) {
+      tg.MainButton.setText('Kirim');
+      tg.MainButton.onClick(() => submitForm());
+      tg.MainButton.show();
+    }
 
-  // === (lanjutan kode scanner-mu tetap sama di sini) ===
-  // paste semua script jsQR + fetch ke GAS yang sudah ada
-});
-</script>
+    resetBtn.addEventListener('click', () => {
+      form.reset();
+      ok.classList.add('hidden');
+      tg?.MainButton.show();
+    });
+
+    form.addEventListener('submit', (e) => { e.preventDefault(); submitForm(); });
+
+    function collect() {
+      const fd = new FormData(form);
+      const data = Object.fromEntries(fd.entries());
+      // Example: enforce uppercase for several fields
+      ['container','seal','plate'].forEach(k => data[k] = (data[k]||'').toUpperCase());
+      return data;
+    }
+
+    function submitForm() {
+      const data = collect();
+
+      // Basic client-side validation
+      if (!data.container || !data.date || !data.seal || !data.plate) {
+        if (tg) tg.HapticFeedback.notificationOccurred('error');
+        alert('Lengkapi semua field wajib.');
+        return;
+      }
+
+      const payload = { type: 'inspection_demo', data };
+
+      if (tg) {
+        tg.sendData(JSON.stringify(payload)); // Delivered to your bot as message.web_app_data
+        tg.HapticFeedback.impactOccurred('light');
+        tg.MainButton.hide();
+      }
+      ok.classList.remove('hidden');
+    }
+
+    // Pre-fill date with today
+    document.getElementById('date').valueAsDate = new Date();
+  </script>
 </body>
 </html>
